@@ -79,12 +79,12 @@ inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount,
 
 	}
 
-	Particle* temp = (Particle*)malloc(sizeof(Particle)*count);
+	Particle* temp = new Particle[count];
 
 	if (particles) {
 		//TODO: Copy over particles that are not removed 
 		//memcpy(temp, particles, initialCount*sizeof(struct Particle));         
-		free(particles);
+		delete particles;
 	}
 
 	particles = temp;
@@ -130,35 +130,6 @@ int main(int argc, char **argv)
 	////////////////////////////
 
 
-	if (argc != 5) {
-		std::cout << "Incorrect argument count.Usage:" << std::endl
-			<< "Particle Count" << std::endl
-			<< "Ticks" << std::endl
-			<< "MeshSize" << std::endl
-			<< "Nearest Neighbors" << std::endl;
-	}
-
-	//inputs
-	uint initialParticleCount = strtoumax(argv[1], NULL, 10);
-	uint simulationTicks = strtoumax(argv[2], NULL, 10);
-	uint meshSize = strtoumax(argv[3], NULL, 10); //must be a power of two
-	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
-
-	//error checking on inputs
-	if ((initialParticleCount == UINTMAX_MAX && errno == ERANGE) || initialParticleCount < 0) {
-		fprintf(stderr, "Incorrect particle count paramenter.\n");
-	}
-	if ((simulationTicks == UINTMAX_MAX && errno == ERANGE) || simulationTicks < 0) {
-		fprintf(stderr, "Incorrect ticks paramenter.\n");
-	}
-	if ((meshSize == UINTMAX_MAX && errno == ERANGE) || meshSize < 0 || IsPower2(meshSize)) {
-		fprintf(stderr, "Incorrect mesh size paramenter. (Must be power of 2)\n");
-	}
-	if ((nearestNeighbors == UINTMAX_MAX && errno == ERANGE) || nearestNeighbors < 1) {
-		fprintf(stderr, "Incorrect nearest neighbors paramenter.\n");
-	}
-
-
 	//init MPI
 	int rankCount, ID;
 
@@ -166,6 +137,44 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &rankCount);
 	MPI_Comm_rank(MPI_COMM_WORLD, &ID);
 
+	//input gets called by all mpi ranks anywho
+	if (ID == 0) {
+		if (argc != 5) {
+			std::cout << "Incorrect argument count.Usage:" << std::endl
+				<< "Particle Count" << std::endl
+				<< "Ticks" << std::endl
+				<< "MeshSize" << std::endl
+				<< "Nearest Neighbors" << std::endl;
+		}
+	}
+
+	//inputs done for all ranks
+	uint initialParticleCount = strtoumax(argv[1], NULL, 10);
+	uint simulationTicks = strtoumax(argv[2], NULL, 10);
+	uint meshSize = strtoumax(argv[3], NULL, 10); //must be a power of two
+	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
+
+	if (ID == 0) {
+		//error checking on inputs
+		if ((initialParticleCount == UINTMAX_MAX && errno == ERANGE) || initialParticleCount < 0) {
+			std::cout << "Incorrect particle count paramenter." << std::endl;
+			return 1;
+		}
+		if ((simulationTicks == UINTMAX_MAX && errno == ERANGE) || simulationTicks < 0) {
+			std::cout << "Incorrect ticks paramenter." << std::endl;
+			return 1;
+		}
+		if ((meshSize == UINTMAX_MAX && errno == ERANGE) || meshSize < 0 || !IsPower2(meshSize)) {
+			std::cout << "Incorrect mesh size paramenter. (Must be power of 2)" << std::endl;
+			return 1;
+		}
+		if ((nearestNeighbors == UINTMAX_MAX && errno == ERANGE) || nearestNeighbors < 1) {
+			std::cout << "Incorrect nearest neighbors paramenter." << std::endl;
+			return 1;
+		}
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	//////////////////////////
 	/*Setup Rank Information*/
