@@ -179,6 +179,7 @@ int main(int argc, char **argv)
 	/*Setup Global Information*/
 	////////////////////////////
 
+	Particle* globalParticles;
 
 	//init MPI
 	int rankCount, ID;
@@ -255,13 +256,19 @@ int main(int argc, char **argv)
 	for (int i = 0; i < simulationTicks; ++i) {
 		//TODO: move particles (e.g. Integration. Please do not use Euler. Do like some Verlet integration as a minimum)
 
+
+		/////////////////////////////////////
+		/*Create the Acceleration Structure*/
+		/////////////////////////////////////
+
 		//update all the paricles morton codes
 		for (int i = 0; i < particlestoSimulate; ++i) {
 			particles[i].UpdateCode();
 		}
 
 		//sort all the particles in the system by morton code
-		//Now ok to call KNearest for this step
+		//TODO: GLOBAl SORT
+		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
 
@@ -280,6 +287,16 @@ int main(int argc, char **argv)
 	//TODO: update mesh heights based on particles
 
 	//TODO: write mesh to .obj format. meshSize will be the number of faces (icosphere is power of two)
+	MPI_File file;
+	MPI_Status status;
+
+	MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
+		MPI_INFO_NULL, &file);
+	//MPI_File_seek(file, _, MPI_SEEK_SET);
+	//MPI_File_write(file, _, _, _, &status);
+	MPI_File_close(&file);
+
+
 
 	MPI_Finalize();
 
