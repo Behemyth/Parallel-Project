@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <limits>
 
 /////////////////
 /*Global Values*/
@@ -15,28 +16,72 @@
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
 
-
 //////////////////////////
 /*Global Data Structures*/
 //////////////////////////
 
-typedef struct Particle {
+class Particle {
 
-	float latitude;
-	float longitude;
+public:
+	//x,y,z position of the particle on a sphere Radius: 1
+	float x;
+	float y;
+	float z;
 
 	float height;	//delta from sea level
 
 	bool removed;
 
-}Particle;
+	uint64_t mortonCode;
+
+	void UpdateCode() {
+
+		//map the floating point values to .. [0,UINT_MAX]
+		int max = std::numeric_limits<int>::max();
+		uint xMap = max*x + max;
+		uint yMap = max*y + max;
+		uint zMap = max*z + max;
+
+		mortonCode = CalculateMortonCode(xMap, yMap, zMap);
+	}
+
+private:
+
+	//compact the bits
+	inline uint64_t CompactBits(const uint a) {
+		const uint64_t masks[6] = {
+			0x1fffff,
+			0x1f00000000ffff,
+			0x1f0000ff0000ff,
+			0x100f00f00f00f00f,
+			0x10c30c30c30c30c3,
+			0x1249249249249249 };
+
+		uint64_t x = a;
+		x = x & masks[0];
+		x = (x | x << 32) & masks[1];
+		x = (x | x << 16) & masks[2];
+		x = (x | x << 8)  & masks[3];
+		x = (x | x << 4)  & masks[4];
+		x = (x | x << 2)  & masks[5];
+		return x;
+	}
+
+
+	//interleave the bits
+	inline uint64_t CalculateMortonCode(const uint x, const uint y, const uint z) {
+		return CompactBits(x) | (CompactBits(y) << 1) | (CompactBits(z) << 2);
+	}
+
+};
 
 
 
 
 ////////////////////////////////////
-/*Functional Function Doing Things*/
+/*Functional Functions Doing Things*/
 ////////////////////////////////////
+
 
 /**
 * Checks to see if an uint is a power of two
@@ -82,7 +127,7 @@ inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount,
 	Particle* temp = new Particle[count];
 
 	if (particles) {
-		//TODO: Copy over particles that are not removed 
+		//TODO: Copy over particles that are not removed into the new pointer
 		//memcpy(temp, particles, initialCount*sizeof(struct Particle));         
 		delete particles;
 	}
@@ -99,10 +144,8 @@ inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount,
 
 void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 
-	particle.height = 0.0f;
-	particle.removed = false;
-
-	particle.longitude = GOLDEN_ANGLE_RADS*particleID;
+	//calc lat and long in radians
+	float longitude = GOLDEN_ANGLE_RADS*particleID;
 
 	//TODO: is this needed?
 
@@ -110,11 +153,18 @@ void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 	lon -= floor(lon);
 	lon *= 2 * PI;*/
 
-	if (particle.longitude > PI) {
-		particle.longitude -= 2 * PI;
+	if (longitude > PI) {
+		longitude -= 2 * PI;
 	}
 
-	particle.latitude = asin(-1 + 2 * particleID / (float)particleCount);
+	float latitude = asin(-1 + 2 * particleID / (float)particleCount);
+
+	particle.height = 0.0f;
+	particle.removed = false;
+
+	particle.x = cos(latitude) * cos(longitude);
+	particle.y = cos(latitude) * sin(longitude);
+	particle.z = sin(latitude);
 
 }
 
@@ -205,10 +255,13 @@ int main(int argc, char **argv)
 	for (int i = 0; i < simulationTicks; ++i) {
 		//TODO: move particles (e.g. Integration. Please do not use Euler. Do like some Verlet integration as a minimum)
 
-		//TODO: create acceleration structure (or send all particles to all other ranks, so inefficient)
-		//IF ACCELERATION:	Assign morton code to each particle
-		//					sort all the morton codes in parallel (radix sort is fastest and really easy)
-		//					k nearest neighbors will be the particles above and below in the array
+		//update all the paricles morton codes
+		for (int i = 0; i < particlestoSimulate; ++i) {
+			particles[i].UpdateCode();
+		}
+
+		//sort all the particles in the system by morton code
+		//Now ok to call KNearest for this step
 
 		//TODO: update particles using k nearest neighbors
 
