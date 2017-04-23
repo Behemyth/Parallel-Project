@@ -282,9 +282,12 @@ int main(int argc, char **argv)
 	/*End Simulation*/
 	//////////////////
 
+	MPI_Barrier(MPI_COMM_WORLD);
+
+
 	//TODO: create mesh (probably icosphere) indices/vertices
 
-	//TODO: update mesh heights based on particles
+	//TODO: update mesh heights based on K-N particles
 
 	//TODO: write mesh to .obj format. meshSize will be the number of faces (icosphere is power of two)
 	MPI_File file;
