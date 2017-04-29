@@ -3,18 +3,25 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <cerrno>
 #include <inttypes.h>
 #include <limits>
 #include <map>
 #include <vector>
 #include <iomanip> 
 #include <sstream> 
+#include <iostream>
+#include <algorithm>
+#include <functional>
+#include <queue>
+#include "clcg4.h"
 
 /////////////////
 /*Global Values*/
 /////////////////
 
 #define uint unsigned int
+#define byte uint8_t
 #define PI 3.14159265359
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
@@ -35,38 +42,43 @@ public:
 	float height;	//delta from sea level
 
 	uint plateID;
+	uint currentRank;
 	uint64_t mortonCode;
 
 	void UpdateCode() {
 
 		//map the floating point values to .. [0,UINT_MAX]
 		int max = std::numeric_limits<int>::max();
-		uint xMap = max*x + max;
-		uint yMap = max*y + max;
-		uint zMap = max*z + max;
+		uint xMap = int(max*x) + max;
+		uint yMap = int(max*y) + max;
+		uint zMap = int(max*z) + max;
 
 		mortonCode = CalculateMortonCode(xMap, yMap, zMap);
 	}
+
+	bool operator < (const Particle& p) const
+	{
+		return (mortonCode < p.mortonCode);
+	}
+
+	bool operator > (const Particle& p) const
+	{
+		return (mortonCode > p.mortonCode);
+	}
+
 
 private:
 
 	//compact the bits
 	inline uint64_t CompactBits(const uint a) {
-		const uint64_t masks[6] = {
-			0x1fffff,
-			0x1f00000000ffff,
-			0x1f0000ff0000ff,
-			0x100f00f00f00f00f,
-			0x10c30c30c30c30c3,
-			0x1249249249249249 };
 
 		uint64_t x = a;
-		x = x & masks[0];
-		x = (x | x << 32) & masks[1];
-		x = (x | x << 16) & masks[2];
-		x = (x | x << 8)  & masks[3];
-		x = (x | x << 4)  & masks[4];
-		x = (x | x << 2)  & masks[5];
+		x = x & 0x1fffff;
+		x = (x | x << 32) & 0x1f00000000ffff;
+		x = (x | x << 16) & 0x1f0000ff0000ff;
+		x = (x | x << 8) & 0x100f00f00f00f00f;
+		x = (x | x << 4) & 0x10c30c30c30c30c3;
+		x = (x | x << 2) & 0x1249249249249249;
 		return x;
 	}
 
@@ -79,6 +91,7 @@ private:
 };
 
 class Vertex {
+
 	public:
 		float x;
 		float y;
@@ -159,27 +172,27 @@ bool IsPower2(uint x) {
 */
 bool IsLegalIcosphereFaceNumber(uint x) {
 	x = x / 20;
-	if(x == 0)
-    	return false;
-  	while(x != 1)
-  	{    
-   		if(x % 4 != 0)
-    		return false;
-    	x = x / 4;      
-  	}
-  	return true;
+	if (x == 0)
+		return false;
+	while (x != 1)
+	{
+		if (x % 4 != 0)
+			return false;
+		x = x / 4;
+	}
+	return true;
 }
 
 /**
 * Determines how may levels of recursion will be necessary to get the desired
 * number of faces on the icosphere.
 * Should only be used after ensuring x is legal with IsLegalIcosphereFaceNumber
-* 
+*
 * @param x - the number of faces in the desired icosphere
 * @return the levels of recursion necessary
 */
 int IcosphereLevel(uint x) {
-	x = x/20;
+	x = x / 20;
 	return log(x) / log(4);
 }
 
@@ -195,9 +208,7 @@ int meshSize(uint sphereLevel) {
 }
 
 /**
-* returns the amount of particles to simulate for the current rank. Mallocs a array
-* and copies over the previous one if it exists
-=======
+*Odd-Even Parallel sort
 * Sorts the particles by Morton ID, after calculating the Morton ID
 *the global particles will be updated by this function, will cordinate with all other ranks
 *
@@ -206,26 +217,81 @@ int meshSize(uint sphereLevel) {
 * @param localOffset - the global offset into the local simulation
 * @param localSize - the local size to simulate
 */
-void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSize) {
+void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSize, uint rankCount, uint rankID) {
 
 	//update all the local paricles morton codes
 	for (int i = 0; i < localSize; ++i) {
 		data[i + localOffset].UpdateCode();
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
+	//sort the local array
+	std::sort(data.begin() + localOffset, data.begin() + localOffset + localSize);
 
-	//sort all the particles in the system by morton code
+	uint inSize = sizeof(Particle)*size;
+	uint outSize = sizeof(Particle)*localSize;
 
 
+	int *counts = new int[rankCount];
+	int *remains = new int[rankCount];
+	int *disps = new int[rankCount];
 
-	MPI_Barrier(MPI_COMM_WORLD);
+	//calc the rank statistics for variable particle count
+	int pertask = inSize / rankCount;
+	for (int i = 0; i < rankCount - 1; i++) {
+		counts[i] = pertask;
+		remains[i] = counts[i];
+	}
+	counts[rankCount - 1] = inSize % rankCount;
+	remains[rankCount - 1] = counts[rankCount - 1];
 
+	disps[0] = 0;
+	for (int i = 1; i < rankCount; i++) {
+		disps[i] = disps[i - 1] + counts[i - 1];
+	}
+
+
+	////gather all rank mortons on to rank 0
+	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), counts, disps, MPI_BYTE, 0, MPI_COMM_WORLD);
+
+	if (rankID == 0) {
+		//merge all sorted arrays with min-heap sort
+		std::priority_queue<Particle, std::vector<Particle>, std::greater<Particle> > least;
+		std::vector<Particle> finalData(data.size());
+
+		uint count = 0;
+		pertask = size / rankCount;
+		//add least from each bin
+		for (int i = 0; i < rankCount; i++) {
+			least.push(data[pertask*i]);
+			remains[i]--;
+		}
+
+		while (count != size) {
+			Particle temp = least.top();
+			least.pop();
+			finalData[count++] = temp;
+			if (remains[temp.currentRank] > 0) {
+				least.push(data[
+					(pertask*temp.currentRank) + 
+						(counts[temp.currentRank] - remains[temp.currentRank]
+							)]);
+				remains[temp.currentRank]--;
+			}
+		}
+
+		//copy sorted
+		data = finalData;
+	}
+
+	//scatter new data
+	MPI_Bcast(data.data(), inSize, MPI_BYTE, 0, MPI_COMM_WORLD);
+
+	delete counts;
+	delete disps;
 }
 
 /**
 * returns the amount of particles to simulate for the current rank.
->>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 *
 * @param rankID - The current rank
 * @param rankCount - The total rank count
@@ -235,20 +301,17 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 */
 inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount, uint& count, uint& index) {
 
-	count = particleCount / rankCount;
+	uint size = particleCount / rankCount;
 
-	uint remainder = particleCount % rankCount;
-	if (rankID < remainder) {
+	if (rankID == rankCount - 1) {
 
-		++count;
-		index = count*rankID;
-
+		count = particleCount % rankCount;
 	}
 	else {
-
-		index = count*rankID + remainder;
-
+		count = size;
 	}
+
+	index = size*rankID;
 
 }
 
@@ -295,9 +358,9 @@ void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 */
 int addVertex(Vertex v)
 {
-    double length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-    vertices.push_back(Vertex(v.x/length, v.y/length, v.z/length));
-    return vertices.size() - 1;
+	double length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+	vertices.push_back(Vertex(v.x / length, v.y / length, v.z / length));
+	return vertices.size() - 1;
 }
 
 /**
@@ -313,26 +376,26 @@ int findMidpoint(int v1, int v2)
 	// determines if the midpoint already exists, by first
 	// getting the unique ID of these two vertices and then
 	// checking the cache
-    uint64_t smaller = (v1 < v2) ? v1 : v2;
-    uint64_t greater = (v1 < v2) ? v2 : v1;
-    uint64_t key = (smaller << 32) + greater;
+	uint64_t smaller = (v1 < v2) ? v1 : v2;
+	uint64_t greater = (v1 < v2) ? v2 : v1;
+	uint64_t key = (smaller << 32) + greater;
 
-    if (vertexCache.count(key) > 0)
-    {
-        return vertexCache[key];
-    }
+	if (vertexCache.count(key) > 0)
+	{
+		return vertexCache[key];
+	}
 
-    // if this midpoint does not exist yet, calculuate its location
-    Vertex vertex1 = vertices[v1];
-    Vertex vertex2 = vertices[v2];
-    Vertex midpoint = Vertex((vertex1.x + vertex2.x) / 2.0,
-        			     	   (vertex1.y + vertex2.y) / 2.0, 
-        					   (vertex1.z + vertex2.z) / 2.0);
-    int newV = addVertex(midpoint); 
+	// if this midpoint does not exist yet, calculuate its location
+	Vertex vertex1 = vertices[v1];
+	Vertex vertex2 = vertices[v2];
+	Vertex midpoint = Vertex((vertex1.x + vertex2.x) / 2.0,
+		(vertex1.y + vertex2.y) / 2.0,
+		(vertex1.z + vertex2.z) / 2.0);
+	int newV = addVertex(midpoint);
 
-    // store the new midpoint in the cache
-    vertexCache[key] = newV;
-    return newV;
+	// store the new midpoint in the cache
+	vertexCache[key] = newV;
+	return newV;
 }
 
 
@@ -357,6 +420,10 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &rankCount);
 	MPI_Comm_rank(MPI_COMM_WORLD, &ID);
 
+	// Init 16,384 RNG streams - each rank has an independent stream
+	InitDefault();
+	MPI_Barrier(MPI_COMM_WORLD);
+
 	if (ID == 0) {
 		//input gets called by all mpi ranks anywho
 		if (argc != 5) {
@@ -371,7 +438,7 @@ int main(int argc, char **argv)
 	//inputs done for all ranks
 	uint initialParticleCount = strtoumax(argv[1], NULL, 10);
 	uint simulationTicks = strtoumax(argv[2], NULL, 10);
-	uint sphereLevel = strtoumax(argv[3], NULL, 10); 
+	uint sphereLevel = strtoumax(argv[3], NULL, 10);
 	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
 	double startTime;
 
@@ -400,6 +467,8 @@ int main(int argc, char **argv)
 		}
 	}
 
+	//create the particle datatype
+
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//////////////////////////
@@ -422,10 +491,11 @@ int main(int argc, char **argv)
 	//init particles sets the ID to the global Particle ID
 	for (int i = 0; i < particlestoSimulate; ++i) {
 		InitParticle(particles[particleOffset + i], particleOffset + i, initialParticleCount);
+		particles[particleOffset + i].currentRank = ID;
 	}
 
 	//Sort data (updates the global array)
-	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate);
+	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 
 	//ACTUAL plate assigning
 
@@ -446,10 +516,8 @@ int main(int argc, char **argv)
 		/*Create the Acceleration Structure*/
 		/////////////////////////////////////
 
-
-
 		//sort all the particles in the system by morton code
-		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate);
+		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
@@ -459,6 +527,10 @@ int main(int argc, char **argv)
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
+		//update the current rank processor
+		for (int i = 0; i < particlestoSimulate; ++i) {
+			particles[particleOffset + i].currentRank = ID;
+		}
 	}
 	//////////////////
 	/*End Simulation*/
@@ -471,7 +543,9 @@ int main(int argc, char **argv)
 
 	//TODO: update mesh heights based on K-N particles
 
-	//TODO: write mesh to .obj format. meshSize(sphereLevel) will be the number of faces
+////////////////////////////////
+/*Create the initial icosphere*/
+////////////////////////////////
 
 	MPI_File file;
 	MPI_Status status;
@@ -484,52 +558,53 @@ int main(int argc, char **argv)
 		int t = (1.0 + sqrt(5.0)) / 2.0;
 
 		// Create the initial vertices of the icohedron
-		addVertex(Vertex(-1,  t,  0));
-		addVertex(Vertex( 1,  t,  0));
-		addVertex(Vertex(-1, -t,  0));
-		addVertex(Vertex( 1, -t,  0));
+		addVertex(Vertex(-1, t, 0));
+		addVertex(Vertex(1, t, 0));
+		addVertex(Vertex(-1, -t, 0));
+		addVertex(Vertex(1, -t, 0));
 
-		addVertex(Vertex( 0, -1,  t));
-		addVertex(Vertex( 0,  1,  t));
-		addVertex(Vertex( 0, -1, -t));
-		addVertex(Vertex( 0,  1, -t));
+		addVertex(Vertex(0, -1, t));
+		addVertex(Vertex(0, 1, t));
+		addVertex(Vertex(0, -1, -t));
+		addVertex(Vertex(0, 1, -t));
 
-		addVertex(Vertex( t,  0, -1));
-		addVertex(Vertex( t,  0,  1));
-		addVertex(Vertex(-t,  0, -1));
-		addVertex(Vertex(-t,  0,  1));
+		addVertex(Vertex(t, 0, -1));
+		addVertex(Vertex(t, 0, 1));
+		addVertex(Vertex(-t, 0, -1));
+		addVertex(Vertex(-t, 0, 1));
 
 		// Create the initial faces of the icohedron
-	    // Faces around point 0
-	    faces.push_back(Face(0, 11, 5));
-	    faces.push_back(Face(0, 5, 1));
-	    faces.push_back(Face(0, 1, 7));
-	    faces.push_back(Face(0, 7, 10));
-	    faces.push_back(Face(0, 10, 11));
+		// Faces around point 0
+		faces.push_back(Face(0, 11, 5));
+		faces.push_back(Face(0, 5, 1));
+		faces.push_back(Face(0, 1, 7));
+		faces.push_back(Face(0, 7, 10));
+		faces.push_back(Face(0, 10, 11));
 
-	    // Adjacent faces 
-	    faces.push_back(Face(1, 5, 9));
-	    faces.push_back(Face(5, 11, 4));
-	    faces.push_back(Face(11, 10, 2));
-	    faces.push_back(Face(10, 7, 6));
-	    faces.push_back(Face(7, 1, 8));
+		// Adjacent faces 
+		faces.push_back(Face(1, 5, 9));
+		faces.push_back(Face(5, 11, 4));
+		faces.push_back(Face(11, 10, 2));
+		faces.push_back(Face(10, 7, 6));
+		faces.push_back(Face(7, 1, 8));
 
-	    // Faces around point 3
-	    faces.push_back(Face(3, 9, 4));
-	    faces.push_back(Face(3, 4, 2));
-	    faces.push_back(Face(3, 2, 6));
-	    faces.push_back(Face(3, 6, 8));
-	    faces.push_back(Face(3, 8, 9));
+		// Faces around point 3
+		faces.push_back(Face(3, 9, 4));
+		faces.push_back(Face(3, 4, 2));
+		faces.push_back(Face(3, 2, 6));
+		faces.push_back(Face(3, 6, 8));
+		faces.push_back(Face(3, 8, 9));
 
-	    // Adjacent faces 
-	    faces.push_back(Face(4, 9, 5));
-	    faces.push_back(Face(2, 4, 11));
-	    faces.push_back(Face(6, 2, 10));
-	    faces.push_back(Face(8, 6, 7));
-	    faces.push_back(Face(9, 8, 1));
+		// Adjacent faces 
+		faces.push_back(Face(4, 9, 5));
+		faces.push_back(Face(2, 4, 11));
+		faces.push_back(Face(6, 2, 10));
+		faces.push_back(Face(8, 6, 7));
+		faces.push_back(Face(9, 8, 1));
 
 		// Now, begin splitting up the triangle faces to form an isohedron of a desired number of faces
 		int levels = sphereLevel;
+
 	    for (int i = 0; i < levels; i++)
 	    {
 	        std::vector<Face> newFaces;
@@ -630,8 +705,8 @@ int main(int argc, char **argv)
 		stream.str(std::string());
 
 		std::string line = "v " + x + " " + y + " " + z + "\n";
-		const char* cStringLine = line.c_str();
-		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
     }
     stream.str(std::string());
 
@@ -662,8 +737,8 @@ int main(int argc, char **argv)
 		stream.str(std::string());
 
 		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
-		const char* cStringLine = line.c_str();
-		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
     } 
 
 	MPI_File_close(&file);
