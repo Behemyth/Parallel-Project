@@ -548,7 +548,7 @@ int main(int argc, char **argv)
 	        }
 	        faces = newFaces;
 	    }
-
+	    std::cout << faces.size() << std::endl;
 	   
 	}
 	 // Send the newly generated vertex and face arrays to the other ranks for writing
@@ -584,8 +584,26 @@ int main(int argc, char **argv)
 	}
 
     // Write the vertices to the obj file
-    MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
-		MPI_INFO_NULL, &file);
+
+    // Open the file, deleting it if it exists already
+	int exists = MPI_File_open(MPI_COMM_WORLD, 
+								(char *)"planet.obj", 
+								MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY, 
+								MPI_INFO_NULL, 
+								&file);
+    if (exists != MPI_SUCCESS)  {
+        if (ID == 0) {
+            MPI_File_delete((char *)"planet.obj",MPI_INFO_NULL);
+        }
+        MPI_File_open(MPI_COMM_WORLD, 
+        				(char *)"planet.obj", 
+        				MPI_MODE_CREATE | MPI_MODE_WRONLY,
+						MPI_INFO_NULL, 
+						&file);
+    }
+
+    //MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
+	//	MPI_INFO_NULL, &file);
 
     std::stringstream stream;
     int start = ID * verticesToWrite;
