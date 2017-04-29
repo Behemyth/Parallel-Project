@@ -10,6 +10,7 @@
 #include <vector>
 #include <iomanip> 
 #include <sstream> 
+#include <iostream>
 #include <algorithm>
 #include <functional>
 #include <queue>
@@ -688,8 +689,8 @@ int main(int argc, char **argv)
 		stream.str(std::string());
 
 		std::string line = "v " + x + " " + y + " " + z + "\n";
-		const char* cStringLine = line.c_str();
-		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
     }
     stream.str(std::string());
 
@@ -720,8 +721,8 @@ int main(int argc, char **argv)
 		stream.str(std::string());
 
 		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
-		const char* cStringLine = line.c_str();
-		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
     } 
 
 	MPI_File_close(&file);
