@@ -89,6 +89,14 @@ class Vertex {
 			y = y_;
 			z = z_;
 		}
+
+		// A default constructor is needed to call resize()
+		// Otherwise, this should not be used
+		Vertex() {
+			x = 0;
+			y = 0;
+			z = 0;
+		}
 };
 
 class Face {
@@ -101,6 +109,14 @@ class Face {
 			v1 = v1_;
 			v2 = v2_;
 			v3 = v3_;
+		}
+
+		// A default constructor is needed to call resize()
+		// Otherwise, this should not be used
+		Face() {
+			v1 = 1;
+			v2 = 2;
+			v3 = 3;
 		}
 };
 
@@ -459,8 +475,7 @@ int main(int argc, char **argv)
 
 	MPI_File file;
 	MPI_Status status;
-	MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
-		MPI_INFO_NULL, &file);
+	
 	if(ID == 0) {
 		////////////////////////////////
 		/*Create the initial icosphere*/
@@ -534,46 +549,107 @@ int main(int argc, char **argv)
 	        faces = newFaces;
 	    }
 
-	    //TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
-	    std::stringstream stream;
-	    // Write the vertices to the obj file
-	    for(int v = 0; v < vertices.size(); v++) {
-			stream << std::fixed << std::setprecision(3) << vertices[v].x;
-			std::string x = stream.str();
-			stream.str(std::string());
-
-			stream << std::fixed << std::setprecision(3) << vertices[v].y;
-			std::string y = stream.str();
-			stream.str(std::string());
-
-			stream << std::fixed << std::setprecision(3) << vertices[v].z;
-			std::string z = stream.str();
-			stream.str(std::string());
-
-			std::string line = "v " + x + " " + y + " " + z + "\n";
-			const char* cStringLine = line.c_str();
-			MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
-	    }
-	    stream.str(std::string());
-	    //Write the faces to the obj file
-	   	for(int f = 0; f < faces.size(); f++) {
-			stream << (faces[f].v1+1);
-			std::string v1 = stream.str();
-			stream.str(std::string());
-
-			stream << (faces[f].v2+1);
-			std::string v2 = stream.str();
-			stream.str(std::string());
-
-			stream << (faces[f].v3+1);
-			std::string v3 = stream.str();
-			stream.str(std::string());
-
-			std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
-			const char* cStringLine = line.c_str();
-			MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
-	    }
+	   
 	}
+	 // Send the newly generated vertex and face arrays to the other ranks for writing
+	int v_size;
+	int f_size;
+	if(ID == 0) {
+		v_size = vertices.size() * sizeof(Vertex);
+		f_size = faces.size() * sizeof(Face);
+	}
+	// First, send out the amount of data that will be sent
+	MPI_Bcast(&v_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&f_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	// Get space ready for the broadcast
+	if(ID != 0) {
+		vertices.resize(v_size / sizeof(Vertex));
+		faces.resize(f_size / sizeof(Face));
+	}
+	// Then, send out the data
+	MPI_Bcast(&vertices[0], v_size, MPI_BYTE, 
+	    			0, MPI_COMM_WORLD);
+	MPI_Bcast(&faces[0], f_size, MPI_BYTE, 
+	    			0, MPI_COMM_WORLD);
+
+    //TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
+
+	int verticesToWrite = vertices.size() / rankCount;
+	if(ID < (vertices.size() % rankCount)) {
+		verticesToWrite += 1;
+	}
+	int facesToWrite = faces.size() / rankCount;
+	if(ID < (faces.size() % rankCount)) {
+		facesToWrite += 1;
+	}
+
+    // Write the vertices to the obj file
+    MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
+		MPI_INFO_NULL, &file);
+
+    std::stringstream stream;
+    int start = ID * verticesToWrite;
+    int end = start + verticesToWrite;
+    int vertexBytesPerLine = 1 			// 'v'
+    				 	   + (13 * 3) 	// Numbers  
+    				 	   + 3 			// spaces
+    				 	   + 1;			// newline
+    MPI_Offset offset = vertexBytesPerLine * start;
+    MPI_File_seek(file, offset, MPI_SEEK_SET);
+    // Debug call
+    if(end > vertices.size()) {
+    	std::cout << "Error in getting write range (vertices)" << std::endl;
+    }
+    for(int v = start; v < end; v++) {
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
+		std::string x = stream.str();
+		stream.str(std::string());
+
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].y;
+		std::string y = stream.str();
+		stream.str(std::string());
+
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].z;
+		std::string z = stream.str();
+		stream.str(std::string());
+
+		std::string line = "v " + x + " " + y + " " + z + "\n";
+		const char* cStringLine = line.c_str();
+		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+    }
+    stream.str(std::string());
+
+    //Write the faces to the obj file
+    start = ID * facesToWrite;
+    end = start + facesToWrite;
+    int faceBytesPerLine = 1 			// 'v'
+    				 	 + (16 * 3) 	// Numbers  
+    				 	 + 3 			// spaces
+    				 	 + 1;			// newline
+    offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
+    MPI_File_seek(file, offset, MPI_SEEK_SET);
+    // Debug call
+    if(end > faces.size()) {
+    	std::cout << "Error in getting write range (faces)" << std::endl;
+    }
+   	for(int f = start; f < end; f++) {
+		stream << std::setw(16) << (faces[f].v1+1);
+		std::string v1 = stream.str();
+		stream.str(std::string());
+
+		stream << std::setw(16) << (faces[f].v2+1);
+		std::string v2 = stream.str();
+		stream.str(std::string());
+
+		stream << std::setw(16) << (faces[f].v3+1);
+		std::string v3 = stream.str();
+		stream.str(std::string());
+
+		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
+		const char* cStringLine = line.c_str();
+		MPI_File_write(file, (void*) cStringLine, strlen(cStringLine), MPI_CHAR, &status);
+    } 
+
 	MPI_File_close(&file);
 
 	//end time
