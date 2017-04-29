@@ -5,10 +5,14 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <limits>
+<<<<<<< HEAD
 #include <map>
 #include <vector>
 #include <iomanip> 
 #include <sstream> 
+=======
+#include <vector>
+>>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 
 /////////////////
 /*Global Values*/
@@ -34,8 +38,7 @@ public:
 
 	float height;	//delta from sea level
 
-	bool removed;
-
+	uint plateID;
 	uint64_t mortonCode;
 
 	void UpdateCode() {
@@ -136,6 +139,7 @@ bool IsPower2(uint x) {
 }
 
 /**
+<<<<<<< HEAD
 * Checks to see if an unit is a legal number of
 * faces for an isophere
 *
@@ -182,15 +186,43 @@ int meshSize(uint sphereLevel) {
 /**
 * returns the amount of particles to simulate for the current rank. Mallocs a array
 * and copies over the previous one if it exists
+=======
+* Sorts the particles by Morton ID, after calculating the Morton ID
+*the global particles will be updated by this function, will cordinate with all other ranks
+*
+* @param data - The global particles to sort by Morton ID
+* @param size - The particles size
+* @param localOffset - the global offset into the local simulation
+* @param localSize - the local size to simulate
+*/
+void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSize) {
+
+	//update all the local paricles morton codes
+	for (int i = 0; i < localSize; ++i) {
+		data[i + localOffset].UpdateCode();
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	//sort all the particles in the system by morton code
+
+
+
+	MPI_Barrier(MPI_COMM_WORLD);
+
+}
+
+/**
+* returns the amount of particles to simulate for the current rank.
+>>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 *
 * @param rankID - The current rank
 * @param rankCount - The total rank count
 * @param particleCount - The particle count to distribute
-* @return particles - The particles to simulate
 * @return count - The number of particles particles to simulate
 * @return index - The index of the first particle for this rank
 */
-inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount, Particle*& particles, uint& count, uint& index) {
+inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount, uint& count, uint& index) {
 
 	count = particleCount / rankCount;
 
@@ -203,19 +235,9 @@ inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount,
 	}
 	else {
 
-		index = (count + 1)*rankID;
+		index = count*rankID + remainder;
 
 	}
-
-	Particle* temp = new Particle[count];
-
-	if (particles) {
-		//TODO: Copy over particles that are not removed into the new pointer
-		//memcpy(temp, particles, initialCount*sizeof(struct Particle));         
-		delete particles;
-	}
-
-	particles = temp;
 
 }
 
@@ -243,12 +265,14 @@ void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 	float latitude = asin(-1 + 2 * particleID / (float)particleCount);
 
 	particle.height = 0.0f;
-	particle.removed = false;
 
 	particle.x = cos(latitude) * cos(longitude);
 	particle.y = cos(latitude) * sin(longitude);
 	particle.z = sin(latitude);
 
+	particle.plateID = particleID;
+
+	particle.mortonCode = 0;
 }
 
 /**
@@ -312,17 +336,18 @@ int main(int argc, char **argv)
 	/*Setup Global Information*/
 	////////////////////////////
 
-	Particle* globalParticles;
+	std::vector<Particle> particles;
 
-	//init MPI
+
+	/********** Initialize MPI **********/
 	int rankCount, ID;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &rankCount);
 	MPI_Comm_rank(MPI_COMM_WORLD, &ID);
 
-	//input gets called by all mpi ranks anywho
 	if (ID == 0) {
+		//input gets called by all mpi ranks anywho
 		if (argc != 5) {
 			std::cout << "Incorrect argument count.Usage:" << std::endl
 				<< "Particle Count" << std::endl
@@ -337,6 +362,7 @@ int main(int argc, char **argv)
 	uint simulationTicks = strtoumax(argv[2], NULL, 10);
 	uint sphereLevel = strtoumax(argv[3], NULL, 10); 
 	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
+	double startTime;
 
 	if (ID == 0) {
 		//error checking on inputs
@@ -356,6 +382,11 @@ int main(int argc, char **argv)
 			std::cout << "Incorrect nearest neighbors paramenter." << std::endl;
 			return 1;
 		}
+
+		//start time
+		if (ID == 0) {
+			startTime = MPI_Wtime();
+		}
 	}
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -366,18 +397,28 @@ int main(int argc, char **argv)
 	uint currentParticleCount;
 	uint particleOffset; //the offset of the local particles into the global particle count
 	uint particlestoSimulate = 0; //initial count needed =0
-	Particle* particles;  //the local array of particles being simulated
 
-	ParticlestoSimulate(ID, rankCount, initialParticleCount, particles, particlestoSimulate, particleOffset);
+	ParticlestoSimulate(ID, rankCount, initialParticleCount, particlestoSimulate, particleOffset);
 
 
 	/////////////////////////
 	/*Initialize Simulation*/
 	/////////////////////////
+	//(Plate ID, temp, and any gosh darn variable this simulation would be cool with)
 
+	particles.resize(initialParticleCount);
+
+	//init particles sets the ID to the global Particle ID
 	for (int i = 0; i < particlestoSimulate; ++i) {
-		InitParticle(particles[i], particleOffset + i, initialParticleCount);
+		InitParticle(particles[particleOffset + i], particleOffset + i, initialParticleCount);
 	}
+
+	//Sort data (updates the global array)
+	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate);
+
+	//ACTUAL plate assigning
+
+
 
 
 	////////////////////
@@ -394,13 +435,10 @@ int main(int argc, char **argv)
 		/*Create the Acceleration Structure*/
 		/////////////////////////////////////
 
-		//update all the paricles morton codes
-		for (int i = 0; i < particlestoSimulate; ++i) {
-			particles[i].UpdateCode();
-		}
+
 
 		//sort all the particles in the system by morton code
-		//TODO: GLOBAl SORT
+		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate);
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
@@ -408,7 +446,7 @@ int main(int argc, char **argv)
 		//TODO: create and remove particles
 
 		//update rank information
-		ParticlestoSimulate(ID, rankCount, currentParticleCount, particles, particlestoSimulate, particleOffset);
+		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
 	}
 	//////////////////
@@ -543,7 +581,18 @@ int main(int argc, char **argv)
 	}
 	MPI_File_close(&file);
 
+	//end time
+	if (ID == 0) {
+		double endTime = MPI_Wtime();
 
+		double calcTime = endTime - startTime;
+
+<<<<<<< HEAD
+=======
+		printf("The simulation took %f seconds.\n", calcTime);
+	}
+
+>>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 	MPI_Finalize();
 
 	return 0;
