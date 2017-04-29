@@ -548,8 +548,6 @@ int main(int argc, char **argv)
 	        }
 	        faces = newFaces;
 	    }
-	    std::cout << faces.size() << std::endl;
-	   
 	}
 	 // Send the newly generated vertex and face arrays to the other ranks for writing
 	int v_size;
