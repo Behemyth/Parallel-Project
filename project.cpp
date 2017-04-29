@@ -681,10 +681,10 @@ int main(int argc, char **argv)
     std::stringstream stream;
     int start = ID * verticesToWrite;
     int end = start + verticesToWrite;
-    int vertexBytesPerLine = 1 			// 'v'
-    				 	   + (13 * 3) 	// Numbers  
-    				 	   + 3 			// spaces
-    				 	   + 1;			// newline
+    int vertexBytesPerLine = 1 				// 'v'
+    				 	   + (13 * 3) + 1 	// Numbers  
+    				 	   + 4 				// spaces
+    				 	   + 1;				// newline
     MPI_Offset offset = vertexBytesPerLine * start;
     MPI_File_seek(file, offset, MPI_SEEK_SET);
     // Debug call
@@ -704,7 +704,7 @@ int main(int argc, char **argv)
 		std::string z = stream.str();
 		stream.str(std::string());
 
-		std::string line = "v " + x + " " + y + " " + z + "\n";
+		std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
 
 		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
     }
