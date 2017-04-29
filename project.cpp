@@ -5,14 +5,10 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <limits>
-<<<<<<< HEAD
 #include <map>
 #include <vector>
 #include <iomanip> 
 #include <sstream> 
-=======
-#include <vector>
->>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 
 /////////////////
 /*Global Values*/
@@ -139,7 +135,6 @@ bool IsPower2(uint x) {
 }
 
 /**
-<<<<<<< HEAD
 * Checks to see if an unit is a legal number of
 * faces for an isophere
 *
@@ -587,12 +582,9 @@ int main(int argc, char **argv)
 
 		double calcTime = endTime - startTime;
 
-<<<<<<< HEAD
-=======
 		printf("The simulation took %f seconds.\n", calcTime);
 	}
 
->>>>>>> 5fb1c3cb36f249ec185ef13e9782e2213e6b5294
 	MPI_Finalize();
 
 	return 0;
