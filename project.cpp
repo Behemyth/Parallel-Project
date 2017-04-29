@@ -8,8 +8,8 @@
 #include <limits>
 #include <map>
 #include <vector>
-#include <iomanip> 
-#include <sstream> 
+#include <iomanip>
+#include <sstream>
 #include <iostream>
 #include <algorithm>
 #include <functional>
@@ -95,7 +95,7 @@ class Vertex {
 	public:
 		float x;
 		float y;
-		float z; 
+		float z;
 
 		Vertex(float x_, float y_, float z_) {
 			x = x_;
@@ -117,7 +117,7 @@ class Face {
 		int v1;
 		int v2;
 		int v3;
-	
+
 		Face(int v1_, int v2_, int v3_) {
 			v1 = v1_;
 			v2 = v2_;
@@ -272,7 +272,7 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 			finalData[count++] = temp;
 			if (remains[temp.currentRank] > 0) {
 				least.push(data[
-					(pertask*temp.currentRank) + 
+					(pertask*temp.currentRank) +
 						(counts[temp.currentRank] - remains[temp.currentRank]
 							)]);
 				remains[temp.currentRank]--;
@@ -398,6 +398,46 @@ int findMidpoint(int v1, int v2)
 	return newV;
 }
 
+/**
+* Add particles to the global array
+* @param particles - a reference to the global array of particles
+* @param numParticles - a reference to the number of particles belonging to
+			to this rank
+* @param offset - the global array offset for this rank
+*/
+
+void addParticles(std::vector<Particle> &particles, uint &numParticles, uint offset) {
+	/*TODO add way to determine how many particles get added.
+	  Set the number of particles to 5 for now*/
+		uint numNew = 5;
+		for (uint i = 0; i < numNew; ++i) {
+			Particle p;
+			InitParticle(&p, offset + numParticles, numParticles + 1);
+			particles.push_back(p);
+			++numParticles;
+		}
+}
+
+void removeParticles(std::vector<Particle> &particles, const std::vector<int> &ids,
+	int currentParticleCount, uint &numParticles, uint offset) {
+	uint numBeforeRemove = numParticles; //store number of particles before removal
+	std::vector<Particle>::iterator itr = particles.begin() + offset;
+	bool removedParticle = false;
+	while(itr != particles.begin() + offset + numParticles) {
+		for (uint i = 0; i < ids.size(); ++i) {
+			if (itr->plateID == ids[i]) {
+				itr = particles.erase(itr);
+				removedParticle = true;
+				--numParticles;
+				break;
+			}
+		}
+		if (!removedParticle) {
+					++itr;
+		}
+		removedParticle = false;
+	}
+}
 
 //////////////////////
 /*Mainly the Program*/
@@ -522,7 +562,11 @@ int main(int argc, char **argv)
 
 		//TODO: update particles using k nearest neighbors
 
-		//TODO: create and remove particles
+		addParticles(particles, currentParticleCount, particleOffset);
+
+		//TODO: determine how to stage particles for removal
+		std::vector<int> toRemove; //list of particle IDs to remove
+		removeParticles(particles, toRemove, currentParticleCount, particleOffset);
 
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
@@ -549,7 +593,7 @@ int main(int argc, char **argv)
 
 	MPI_File file;
 	MPI_Status status;
-	
+
 	if(ID == 0) {
 		////////////////////////////////
 		/*Create the initial icosphere*/
@@ -581,7 +625,7 @@ int main(int argc, char **argv)
 		faces.push_back(Face(0, 7, 10));
 		faces.push_back(Face(0, 10, 11));
 
-		// Adjacent faces 
+		// Adjacent faces
 		faces.push_back(Face(1, 5, 9));
 		faces.push_back(Face(5, 11, 4));
 		faces.push_back(Face(11, 10, 2));
@@ -595,7 +639,7 @@ int main(int argc, char **argv)
 		faces.push_back(Face(3, 6, 8));
 		faces.push_back(Face(3, 8, 9));
 
-		// Adjacent faces 
+		// Adjacent faces
 		faces.push_back(Face(4, 9, 5));
 		faces.push_back(Face(2, 4, 11));
 		faces.push_back(Face(6, 2, 10));
@@ -640,9 +684,9 @@ int main(int argc, char **argv)
 		faces.resize(f_size / sizeof(Face));
 	}
 	// Then, send out the data
-	MPI_Bcast(&vertices[0], v_size, MPI_BYTE, 
+	MPI_Bcast(&vertices[0], v_size, MPI_BYTE,
 	    			0, MPI_COMM_WORLD);
-	MPI_Bcast(&faces[0], f_size, MPI_BYTE, 
+	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
 	    			0, MPI_COMM_WORLD);
 
     //TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
@@ -659,19 +703,19 @@ int main(int argc, char **argv)
     // Write the vertices to the obj file
 
     // Open the file, deleting it if it exists already
-	int exists = MPI_File_open(MPI_COMM_WORLD, 
-								(char *)"planet.obj", 
-								MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY, 
-								MPI_INFO_NULL, 
+	int exists = MPI_File_open(MPI_COMM_WORLD,
+								(char *)"planet.obj",
+								MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY,
+								MPI_INFO_NULL,
 								&file);
     if (exists != MPI_SUCCESS)  {
         if (ID == 0) {
             MPI_File_delete((char *)"planet.obj",MPI_INFO_NULL);
         }
-        MPI_File_open(MPI_COMM_WORLD, 
-        				(char *)"planet.obj", 
+        MPI_File_open(MPI_COMM_WORLD,
+        				(char *)"planet.obj",
         				MPI_MODE_CREATE | MPI_MODE_WRONLY,
-						MPI_INFO_NULL, 
+						MPI_INFO_NULL,
 						&file);
     }
 
@@ -682,7 +726,7 @@ int main(int argc, char **argv)
     int start = ID * verticesToWrite;
     int end = start + verticesToWrite;
     int vertexBytesPerLine = 1 				// 'v'
-    				 	   + (13 * 3) + 1 	// Numbers  
+    				 	   + (13 * 3) + 1 	// Numbers
     				 	   + 4 				// spaces
     				 	   + 1;				// newline
     MPI_Offset offset = vertexBytesPerLine * start;
@@ -714,7 +758,7 @@ int main(int argc, char **argv)
     start = ID * facesToWrite;
     end = start + facesToWrite;
     int faceBytesPerLine = 1 			// 'v'
-    				 	 + (16 * 3) 	// Numbers  
+    				 	 + (16 * 3) 	// Numbers
     				 	 + 3 			// spaces
     				 	 + 1;			// newline
     offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
@@ -739,7 +783,7 @@ int main(int argc, char **argv)
 		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
 
 		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-    } 
+    }
 
 	MPI_File_close(&file);
 
