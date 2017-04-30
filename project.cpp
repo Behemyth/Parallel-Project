@@ -278,8 +278,10 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 
 		//add least from each bin
 		for (int i = 0; i < rankCount; i++) {
-			least.push(data[displacement[i]]);
-			countLeft[i]--;
+			if (count[i]>0) {
+				least.push(data[displacement[i]]);
+				countLeft[i]--;
+			}
 		}
 
 		while (itr != size) {
