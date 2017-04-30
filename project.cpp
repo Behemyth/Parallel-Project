@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <functional>
 #include <queue>
+#include <cassert>
 #include "clcg4.h"
 
 /////////////////
@@ -92,45 +93,45 @@ private:
 
 class Vertex {
 
-	public:
-		float x;
-		float y;
-		float z; 
+public:
+	float x;
+	float y;
+	float z;
 
-		Vertex(float x_, float y_, float z_) {
-			x = x_;
-			y = y_;
-			z = z_;
-		}
+	Vertex(float x_, float y_, float z_) {
+		x = x_;
+		y = y_;
+		z = z_;
+	}
 
-		// A default constructor is needed to call resize()
-		// Otherwise, this should not be used
-		Vertex() {
-			x = 0;
-			y = 0;
-			z = 0;
-		}
+	// A default constructor is needed to call resize()
+	// Otherwise, this should not be used
+	Vertex() {
+		x = 0;
+		y = 0;
+		z = 0;
+	}
 };
 
 class Face {
-	public:
-		int v1;
-		int v2;
-		int v3;
-	
-		Face(int v1_, int v2_, int v3_) {
-			v1 = v1_;
-			v2 = v2_;
-			v3 = v3_;
-		}
+public:
+	int v1;
+	int v2;
+	int v3;
 
-		// A default constructor is needed to call resize()
-		// Otherwise, this should not be used
-		Face() {
-			v1 = 1;
-			v2 = 2;
-			v3 = 3;
-		}
+	Face(int v1_, int v2_, int v3_) {
+		v1 = v1_;
+		v2 = v2_;
+		v3 = v3_;
+	}
+
+	// A default constructor is needed to call resize()
+	// Otherwise, this should not be used
+	Face() {
+		v1 = 1;
+		v2 = 2;
+		v3 = 3;
+	}
 };
 
 ///////////////
@@ -231,52 +232,67 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	uint outSize = sizeof(Particle)*localSize;
 
 
-	int *counts = new int[rankCount];
-	int *remains = new int[rankCount];
-	int *disps = new int[rankCount];
+	int *byteCount = new int[rankCount];
+	int *count = new int[rankCount];
+	int *countLeft = new int[rankCount];
+	int *displacementBytes = new int[rankCount];
+	int *displacement = new int[rankCount];
 
 	//calc the rank statistics for variable particle count
-	int pertask = inSize / rankCount;
-	for (int i = 0; i < rankCount - 1; i++) {
-		counts[i] = pertask;
-		remains[i] = counts[i];
-	}
-	counts[rankCount - 1] = inSize % rankCount;
-	remains[rankCount - 1] = counts[rankCount - 1];
+	uint localCount = size / rankCount;
+	uint remainder = size % rankCount;
+	uint localCountBytes = localCount * sizeof(Particle);
 
-	disps[0] = 0;
+	for (int i = 0; i < rankCount; i++) {
+		if (i < remainder) {
+			byteCount[i] = localCountBytes + sizeof(Particle);
+			count[i] = localCount + 1;
+		}
+		else {
+			byteCount[i] = localCountBytes;
+			count[i] = localCount;
+		}
+		countLeft[i] = count[i];
+	}
+
+	displacementBytes[0] = 0;
+	displacement[0] = 0;
 	for (int i = 1; i < rankCount; i++) {
-		disps[i] = disps[i - 1] + counts[i - 1];
+		displacementBytes[i] = displacementBytes[i - 1] + byteCount[i - 1];
+		displacement[i] = displacement[i - 1] + count[i - 1];
 	}
 
+	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
+	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
 
-	////gather all rank mortons on to rank 0
-	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), counts, disps, MPI_BYTE, 0, MPI_COMM_WORLD);
+	//gather all rank mortons on to rank 0
+	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+
 
 	if (rankID == 0) {
 		//merge all sorted arrays with min-heap sort
 		std::priority_queue<Particle, std::vector<Particle>, std::greater<Particle> > least;
 		std::vector<Particle> finalData(data.size());
 
-		uint count = 0;
-		pertask = size / rankCount;
+		uint itr = 0;
+
 		//add least from each bin
 		for (int i = 0; i < rankCount; i++) {
-			least.push(data[pertask*i]);
-			remains[i]--;
+			least.push(data[displacement[i]]);
+			countLeft[i]--;
 		}
 
-		while (count != size) {
+		while (itr != size) {
 			Particle temp = least.top();
 			least.pop();
-			finalData[count++] = temp;
-			if (remains[temp.currentRank] > 0) {
-				least.push(data[
-					(pertask*temp.currentRank) + 
-						(counts[temp.currentRank] - remains[temp.currentRank]
-							)]);
-				remains[temp.currentRank]--;
+			finalData[itr] = temp;
+			if (countLeft[temp.currentRank] > 0) {
+				least.push(data[displacement[temp.currentRank] + (count[temp.currentRank] - countLeft[temp.currentRank])]);
+				countLeft[temp.currentRank]--;
 			}
+
+			++itr;
+
 		}
 
 		//copy sorted
@@ -286,8 +302,12 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	//scatter new data
 	MPI_Bcast(data.data(), inSize, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-	delete counts;
-	delete disps;
+	delete byteCount;
+	delete displacementBytes;
+	delete displacement;
+	delete count;
+	delete countLeft;
+
 }
 
 /**
@@ -299,19 +319,22 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 * @return count - The number of particles particles to simulate
 * @return index - The index of the first particle for this rank
 */
-inline void ParticlestoSimulate(uint rankID, uint rankCount, uint particleCount, uint& count, uint& index) {
+inline void ParticlestoSimulate(const uint rankID, const uint rankCount, const uint particleCount, uint& count, uint& index) {
 
-	uint size = particleCount / rankCount;
+	count = particleCount / rankCount;
+	uint remainder = particleCount % rankCount;
 
-	if (rankID == rankCount - 1) {
+	if (rankID < remainder) {
 
-		count = particleCount % rankCount;
+		++count;
+		index = count*rankID;
+
 	}
 	else {
-		count = size;
-	}
 
-	index = size*rankID;
+		index = (count*rankID) + remainder;
+
+	}
 
 }
 
@@ -491,8 +514,8 @@ int main(int argc, char **argv)
 	/*Setup Rank Information*/
 	//////////////////////////
 	uint currentParticleCount;
-	uint particleOffset; //the offset of the local particles into the global particle count
-	uint particlestoSimulate = 0; //initial count needed =0
+	uint particleOffset = 0; //the offset of the local particles into the global particle count
+	uint particlestoSimulate = 0;
 
 	ParticlestoSimulate(ID, rankCount, initialParticleCount, particlestoSimulate, particleOffset);
 
@@ -509,6 +532,7 @@ int main(int argc, char **argv)
 		InitParticle(particles[particleOffset + i], particleOffset + i, initialParticleCount);
 		particles[particleOffset + i].currentRank = ID;
 	}
+
 
 	//Sort data (updates the global array)
 	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
@@ -531,6 +555,8 @@ int main(int argc, char **argv)
 		int size = plate.size();
 		platesBySize.insert(std::pair<int,int>(size, plateID));
 	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Now, iterate through the plates, smallest first, and combine them, if needed
 	if(plates.size() > 10) {
@@ -601,8 +627,6 @@ int main(int argc, char **argv)
 	MPI_Barrier(MPI_COMM_WORLD);
 
 
-	//TODO: create mesh (probably icosphere) indices/vertices
-
 	//TODO: update mesh heights based on K-N particles
 
 ////////////////////////////////
@@ -611,8 +635,8 @@ int main(int argc, char **argv)
 
 	MPI_File file;
 	MPI_Status status;
-	
-	if(ID == 0) {
+
+	if (ID == 0) {
 		////////////////////////////////
 		/*Create the initial icosphere*/
 		////////////////////////////////
@@ -667,29 +691,29 @@ int main(int argc, char **argv)
 		// Now, begin splitting up the triangle faces to form an isohedron of a desired number of faces
 		int levels = sphereLevel;
 
-	    for (int i = 0; i < levels; i++)
-	    {
-	        std::vector<Face> newFaces;
-	        for (int j = 0; j < faces.size(); j++)
-	        {
-	        	Face face = faces[j];
-	            // Split this face into four new faces
-	            int a = findMidpoint(face.v1, face.v2);
-	            int b = findMidpoint(face.v2, face.v3);
-	            int c = findMidpoint(face.v3, face.v1);
+		for (int i = 0; i < levels; i++)
+		{
+			std::vector<Face> newFaces;
+			for (int j = 0; j < faces.size(); j++)
+			{
+				Face face = faces[j];
+				// Split this face into four new faces
+				int a = findMidpoint(face.v1, face.v2);
+				int b = findMidpoint(face.v2, face.v3);
+				int c = findMidpoint(face.v3, face.v1);
 
-	            newFaces.push_back(Face(face.v1, a, c));
-	            newFaces.push_back(Face(face.v2, b, a));
-	            newFaces.push_back(Face(face.v3, c, b));
-	            newFaces.push_back(Face(a, b, c));
-	        }
-	        faces = newFaces;
-	    }
+				newFaces.push_back(Face(face.v1, a, c));
+				newFaces.push_back(Face(face.v2, b, a));
+				newFaces.push_back(Face(face.v3, c, b));
+				newFaces.push_back(Face(a, b, c));
+			}
+			faces = newFaces;
+		}
 	}
-	 // Send the newly generated vertex and face arrays to the other ranks for writing
+	// Send the newly generated vertex and face arrays to the other ranks for writing
 	int v_size;
 	int f_size;
-	if(ID == 0) {
+	if (ID == 0) {
 		v_size = vertices.size() * sizeof(Vertex);
 		f_size = faces.size() * sizeof(Face);
 	}
@@ -698,67 +722,63 @@ int main(int argc, char **argv)
 	MPI_Bcast(&v_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&f_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	// Get space ready for the broadcast
-	if(ID != 0) {
+	if (ID != 0) {
 		vertices.resize(v_size / sizeof(Vertex));
 		faces.resize(f_size / sizeof(Face));
 	}
 
 	// Then, send out the data
-	MPI_Bcast(&vertices[0], v_size, MPI_BYTE, 
-	    			0, MPI_COMM_WORLD);
-	MPI_Bcast(&faces[0], f_size, MPI_BYTE, 
-	    			0, MPI_COMM_WORLD);
+	MPI_Bcast(&vertices[0], v_size, MPI_BYTE,
+		0, MPI_COMM_WORLD);
+	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
+		0, MPI_COMM_WORLD);
 
-    //TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
+	//TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
 
 	int verticesToWrite = vertices.size() / rankCount;
-	if(ID < (vertices.size() % rankCount)) {
+	if (ID < (vertices.size() % rankCount)) {
 		verticesToWrite += 1;
 	}
 	int facesToWrite = faces.size() / rankCount;
-	if(ID < (faces.size() % rankCount)) {
+	if (ID < (faces.size() % rankCount)) {
 		facesToWrite += 1;
 	}
 
-    // Write the vertices to the obj file
+	// Write the vertices to the obj file
 
-    // Open the file, deleting it if it exists already
+	// Open the file, deleting it if it exists already
+	int exists = MPI_File_open(MPI_COMM_WORLD,
+		(char *)"planet.obj",
+		MPI_MODE_CREATE | MPI_MODE_EXCL | MPI_MODE_WRONLY,
+		MPI_INFO_NULL,
+		&file);
+	if (exists != MPI_SUCCESS) {
+		if (ID == 0) {
+			MPI_File_delete((char *)"planet.obj", MPI_INFO_NULL);
+		}
+		MPI_File_open(MPI_COMM_WORLD,
+			(char *)"planet.obj",
+			MPI_MODE_CREATE | MPI_MODE_WRONLY,
+			MPI_INFO_NULL,
+			&file);
+	}
 
-	int exists = MPI_File_open(MPI_COMM_WORLD, 
-								(char *)"planet.obj", 
-								MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY, 
-								MPI_INFO_NULL, 
-								&file);
-
-    if (exists != MPI_SUCCESS)  {
-        if (ID == 0) {
-            MPI_File_delete((char *)"planet.obj",MPI_INFO_NULL);
-        }
-
-        MPI_File_open(MPI_COMM_WORLD, 
-        				(char *)"planet.obj", 
-        				MPI_MODE_CREATE | MPI_MODE_WRONLY,
-						MPI_INFO_NULL, 
-						&file);
-    }
-
-    //MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
 	//	MPI_INFO_NULL, &file);
 
-    std::stringstream stream;
-    int start = ID * verticesToWrite;
-    int end = start + verticesToWrite;
-    int vertexBytesPerLine = 1 				// 'v'
-    				 	   + (13 * 3) + 1 	// Numbers  
-    				 	   + 4 				// spaces
-    				 	   + 1;				// newline
-    MPI_Offset offset = vertexBytesPerLine * start;
-    MPI_File_seek(file, offset, MPI_SEEK_SET);
-    // Debug call
-    if(end > vertices.size()) {
-    	std::cout << "Error in getting write range (vertices)" << std::endl;
-    }
-    for(int v = start; v < end; v++) {
+	std::stringstream stream;
+	int start = ID * verticesToWrite;
+	int end = start + verticesToWrite;
+	int vertexBytesPerLine = 1 				// 'v'
+		+ (13 * 3) + 1 	// Numbers  
+		+ 4 				// spaces
+		+ 1;				// newline
+	MPI_Offset offset = vertexBytesPerLine * start;
+	MPI_File_seek(file, offset, MPI_SEEK_SET);
+	// Debug call
+	if (end > vertices.size()) {
+		std::cout << "Error in getting write range (vertices)" << std::endl;
+	}
+	for (int v = start; v < end; v++) {
 		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
 		std::string x = stream.str();
 		stream.str(std::string());
@@ -774,39 +794,39 @@ int main(int argc, char **argv)
 		std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
 
 		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-    }
-    stream.str(std::string());
+	}
+	stream.str(std::string());
 
-    //Write the faces to the obj file
-    start = ID * facesToWrite;
-    end = start + facesToWrite;
-    int faceBytesPerLine = 1 			// 'v'
-    				 	 + (16 * 3) 	// Numbers  
-    				 	 + 3 			// spaces
-    				 	 + 1;			// newline
-    offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
-    MPI_File_seek(file, offset, MPI_SEEK_SET);
-    // Debug call
-    if(end > faces.size()) {
-    	std::cout << "Error in getting write range (faces)" << std::endl;
-    }
-   	for(int f = start; f < end; f++) {
-		stream << std::setw(16) << (faces[f].v1+1);
+	//Write the faces to the obj file
+	start = ID * facesToWrite;
+	end = start + facesToWrite;
+	int faceBytesPerLine = 1 			// 'v'
+		+ (16 * 3) 	// Numbers  
+		+ 3 			// spaces
+		+ 1;			// newline
+	offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
+	MPI_File_seek(file, offset, MPI_SEEK_SET);
+	// Debug call
+	if (end > faces.size()) {
+		std::cout << "Error in getting write range (faces)" << std::endl;
+	}
+	for (int f = start; f < end; f++) {
+		stream << std::setw(16) << (faces[f].v1 + 1);
 		std::string v1 = stream.str();
 		stream.str(std::string());
 
-		stream << std::setw(16) << (faces[f].v2+1);
+		stream << std::setw(16) << (faces[f].v2 + 1);
 		std::string v2 = stream.str();
 		stream.str(std::string());
 
-		stream << std::setw(16) << (faces[f].v3+1);
+		stream << std::setw(16) << (faces[f].v3 + 1);
 		std::string v3 = stream.str();
 		stream.str(std::string());
 
 		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
 
 		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-    } 
+	}
 
 	MPI_File_close(&file);
 
