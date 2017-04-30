@@ -561,7 +561,7 @@ int main(int argc, char **argv)
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Now, iterate through the plates, smallest first, and combine them, if needed
-	if(plates.size() > 10) {
+	/*if(plates.size() > 10) {
 		std::multimap<int, int>::iterator size_itr;
 		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
 			std::vector<Particle> particles = plates[size_itr->second];
@@ -590,7 +590,7 @@ int main(int argc, char **argv)
 				break;
 			}
 		}
-	}
+	}*/
 
 	////////////////////
 	/*Start Simulation*/
@@ -738,11 +738,13 @@ int main(int argc, char **argv)
 	//TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
 
 	int verticesToWrite = vertices.size() / rankCount;
-	if (ID < (vertices.size() % rankCount)) {
+	int extraVertices = vertices.size() % rankCount;
+	if(ID < extraVertices) {
 		verticesToWrite += 1;
 	}
 	int facesToWrite = faces.size() / rankCount;
-	if (ID < (faces.size() % rankCount)) {
+	int extraFaces = faces.size() % rankCount;
+	if(ID < extraFaces) {
 		facesToWrite += 1;
 	}
 
@@ -768,12 +770,12 @@ int main(int argc, char **argv)
 	//	MPI_INFO_NULL, &file);
 
 	std::stringstream stream;
-	int start = ID * verticesToWrite;
+	 int start = ID * verticesToWrite + (ID >= extraVertices ? extraVertices : 0);
 	int end = start + verticesToWrite;
 	int vertexBytesPerLine = 1 				// 'v'
-		+ (13 * 3) + 1 	// Numbers  
-		+ 4 				// spaces
-		+ 1;				// newline
+		+ (13 * 3) + 1 						// Numbers  
+		+ 4 								// spaces
+		+ 1;								// newline
 	MPI_Offset offset = vertexBytesPerLine * start;
 	MPI_File_seek(file, offset, MPI_SEEK_SET);
 	// Debug call
@@ -800,12 +802,12 @@ int main(int argc, char **argv)
 	stream.str(std::string());
 
 	//Write the faces to the obj file
-	start = ID * facesToWrite;
+	start = ID * facesToWrite + (ID >= extraFaces ? extraFaces : 0);
 	end = start + facesToWrite;
 	int faceBytesPerLine = 1 			// 'v'
-		+ (16 * 3) 	// Numbers  
-		+ 3 			// spaces
-		+ 1;			// newline
+		+ (16 * 3) 						// Numbers  
+		+ 3 							// spaces
+		+ 1;							// newline
 	offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
 	MPI_File_seek(file, offset, MPI_SEEK_SET);
 	// Debug call
