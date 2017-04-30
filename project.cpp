@@ -41,6 +41,9 @@ public:
 	float x;
 	float y;
 	float z;
+	float px;
+	float py;
+	float pz;
 
 	float height;	//delta from sea level
 
@@ -104,9 +107,18 @@ public:
 	}
 };
 
+class Axis {
+public:
+    float x;
+    float y;
+    float z;
+};
+
 class Plate {
 public:
 	int plateID;
+    float velocity;
+    Axis axis;
 
 };
 
@@ -668,6 +680,16 @@ void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &
 	}
 }
 
+void update_position(Particle p, Axis axis, float angle) {
+    p.px = p.x;
+    p.py = p.y;
+    p.pz = p.z;
+
+    p.x = p.px * cos(angle) + (1 - cos(angle))*(axis.x*axis.x*p.px + axis.x*axis.y*p.py + axis.x*axis.z*p.pz) + (axis.y*p.pz - axis.z*p.py)*sin(angle);
+    p.y = p.py * cos(angle) + (1 - cos(angle))*(axis.y*axis.x*p.px + axis.y*axis.y*p.py + axis.y*axis.z*p.pz) + (axis.z*p.px - axis.x*p.pz)*sin(angle);
+    p.z = p.pz * cos(angle) + (1 - cos(angle))*(axis.z*axis.x*p.px + axis.z*axis.y*p.py + axis.z*axis.z*p.pz) + (axis.x*p.py - axis.y*p.px)*sin(angle);
+}
+
 //////////////////////
 /*Mainly the Program*/
 //////////////////////
@@ -843,8 +865,14 @@ int main(int argc, char **argv)
 	currentParticleCount = initialParticleCount;
 
 	for (int i = 0; i < simulationTicks; ++i) {
-		//TODO: move particles (e.g. Integration. Please do not use Euler. Do like some Verlet integration as a minimum)
-
+        // move particles based on previous position and angle around an axis
+        float angle;
+        Axis axis;
+        for(Particle p : particles) {
+            angle = plates[p.plateID].velocity;
+            axis = plates[p.plateID].axis;
+            update_position(p, axis, angle);
+        }
 
 		/////////////////////////////////////
 		/*Create the Acceleration Structure*/
