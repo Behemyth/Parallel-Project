@@ -447,28 +447,30 @@ void addParticles(std::vector<Particle> &particles, uint &numParticles) {
 
 /*
  * remove particles
- * @param particles - local vector of particles to remove from
- * @param ids - ids of particles to remove
+ * @param local - local vector of particles to remove from
+ * @param global - global vector of particles to remove from
  * @param numParticles - number of global particles
  */
-void removeParticles(std::vector<Particle> &particles, const std::vector<int> &ids,
+void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &global,
 		uint &numParticles) {
 	uint numBeforeRemove = numParticles; //store number of particles before removal
-	std::vector<Particle>::iterator itr = particles.begin();
-	bool removedParticle = false;
-	while(itr != particles.end()) {
-		for (uint i = 0; i < ids.size(); ++i) {
-			if (itr->plateID == ids[i]) {
-				itr = particles.erase(itr);
-				removedParticle = true;
-				--numParticles;
-				break;
+	std::vector<Particle>::iterator itr = local.begin();
+	int diffIds = 0;
+	int totalIds = 0;
+	while(itr != local.end()) {
+		for (uint i = 0; i < global.size(); ++i) {
+			if (global[i].plateID != itr->plateID) {
+				++diffIds;
 			}
+			++totalIds;
 		}
-		if (!removedParticle) {
-					++itr;
+		if (diffIds / totalIds > .45) {
+			itr = local.erase(itr);
+			--numParticles;
 		}
-		removedParticle = false;
+		else {
+			++itr;
+		}
 	}
 }
 
@@ -601,10 +603,7 @@ int main(int argc, char **argv)
 			++itr;
 		}
 		addParticles(localParticles, currentParticleCount);
-
-		//TODO: determine how to stage particles for removal
-		std::vector<int> toRemove; //list of particle IDs to remove
-		removeParticles(localParticles, toRemove, currentParticleCount);
+		removeParticles(localParticles, particles, currentParticleCount);
 
 		//collect global particle information from other ranks
 		int* recvCount = new int[rankCount];
