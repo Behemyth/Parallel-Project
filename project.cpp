@@ -563,201 +563,201 @@ int main(int argc, char **argv)
 /*Create the initial icosphere*/
 ////////////////////////////////
 
-	//MPI_File file;
-	//MPI_Status status;
+	MPI_File file;
+	MPI_Status status;
 
-	//if (ID == 0) {
-	//	////////////////////////////////
-	//	/*Create the initial icosphere*/
-	//	////////////////////////////////
+	if (ID == 0) {
+		////////////////////////////////
+		/*Create the initial icosphere*/
+		////////////////////////////////
 
-	//	int t = (1.0 + sqrt(5.0)) / 2.0;
+		int t = (1.0 + sqrt(5.0)) / 2.0;
 
-	//	// Create the initial vertices of the icohedron
-	//	addVertex(Vertex(-1, t, 0));
-	//	addVertex(Vertex(1, t, 0));
-	//	addVertex(Vertex(-1, -t, 0));
-	//	addVertex(Vertex(1, -t, 0));
+		// Create the initial vertices of the icohedron
+		addVertex(Vertex(-1, t, 0));
+		addVertex(Vertex(1, t, 0));
+		addVertex(Vertex(-1, -t, 0));
+		addVertex(Vertex(1, -t, 0));
 
-	//	addVertex(Vertex(0, -1, t));
-	//	addVertex(Vertex(0, 1, t));
-	//	addVertex(Vertex(0, -1, -t));
-	//	addVertex(Vertex(0, 1, -t));
+		addVertex(Vertex(0, -1, t));
+		addVertex(Vertex(0, 1, t));
+		addVertex(Vertex(0, -1, -t));
+		addVertex(Vertex(0, 1, -t));
 
-	//	addVertex(Vertex(t, 0, -1));
-	//	addVertex(Vertex(t, 0, 1));
-	//	addVertex(Vertex(-t, 0, -1));
-	//	addVertex(Vertex(-t, 0, 1));
+		addVertex(Vertex(t, 0, -1));
+		addVertex(Vertex(t, 0, 1));
+		addVertex(Vertex(-t, 0, -1));
+		addVertex(Vertex(-t, 0, 1));
 
-	//	// Create the initial faces of the icohedron
-	//	// Faces around point 0
-	//	faces.push_back(Face(0, 11, 5));
-	//	faces.push_back(Face(0, 5, 1));
-	//	faces.push_back(Face(0, 1, 7));
-	//	faces.push_back(Face(0, 7, 10));
-	//	faces.push_back(Face(0, 10, 11));
+		// Create the initial faces of the icohedron
+		// Faces around point 0
+		faces.push_back(Face(0, 11, 5));
+		faces.push_back(Face(0, 5, 1));
+		faces.push_back(Face(0, 1, 7));
+		faces.push_back(Face(0, 7, 10));
+		faces.push_back(Face(0, 10, 11));
 
-	//	// Adjacent faces 
-	//	faces.push_back(Face(1, 5, 9));
-	//	faces.push_back(Face(5, 11, 4));
-	//	faces.push_back(Face(11, 10, 2));
-	//	faces.push_back(Face(10, 7, 6));
-	//	faces.push_back(Face(7, 1, 8));
+		// Adjacent faces 
+		faces.push_back(Face(1, 5, 9));
+		faces.push_back(Face(5, 11, 4));
+		faces.push_back(Face(11, 10, 2));
+		faces.push_back(Face(10, 7, 6));
+		faces.push_back(Face(7, 1, 8));
 
-	//	// Faces around point 3
-	//	faces.push_back(Face(3, 9, 4));
-	//	faces.push_back(Face(3, 4, 2));
-	//	faces.push_back(Face(3, 2, 6));
-	//	faces.push_back(Face(3, 6, 8));
-	//	faces.push_back(Face(3, 8, 9));
+		// Faces around point 3
+		faces.push_back(Face(3, 9, 4));
+		faces.push_back(Face(3, 4, 2));
+		faces.push_back(Face(3, 2, 6));
+		faces.push_back(Face(3, 6, 8));
+		faces.push_back(Face(3, 8, 9));
 
-	//	// Adjacent faces 
-	//	faces.push_back(Face(4, 9, 5));
-	//	faces.push_back(Face(2, 4, 11));
-	//	faces.push_back(Face(6, 2, 10));
-	//	faces.push_back(Face(8, 6, 7));
-	//	faces.push_back(Face(9, 8, 1));
+		// Adjacent faces 
+		faces.push_back(Face(4, 9, 5));
+		faces.push_back(Face(2, 4, 11));
+		faces.push_back(Face(6, 2, 10));
+		faces.push_back(Face(8, 6, 7));
+		faces.push_back(Face(9, 8, 1));
 
-	//	// Now, begin splitting up the triangle faces to form an isohedron of a desired number of faces
-	//	int levels = sphereLevel;
+		// Now, begin splitting up the triangle faces to form an isohedron of a desired number of faces
+		int levels = sphereLevel;
 
-	//	for (int i = 0; i < levels; i++)
-	//	{
-	//		std::vector<Face> newFaces;
-	//		for (int j = 0; j < faces.size(); j++)
-	//		{
-	//			Face face = faces[j];
-	//			// Split this face into four new faces
-	//			int a = findMidpoint(face.v1, face.v2);
-	//			int b = findMidpoint(face.v2, face.v3);
-	//			int c = findMidpoint(face.v3, face.v1);
+		for (int i = 0; i < levels; i++)
+		{
+			std::vector<Face> newFaces;
+			for (int j = 0; j < faces.size(); j++)
+			{
+				Face face = faces[j];
+				// Split this face into four new faces
+				int a = findMidpoint(face.v1, face.v2);
+				int b = findMidpoint(face.v2, face.v3);
+				int c = findMidpoint(face.v3, face.v1);
 
-	//			newFaces.push_back(Face(face.v1, a, c));
-	//			newFaces.push_back(Face(face.v2, b, a));
-	//			newFaces.push_back(Face(face.v3, c, b));
-	//			newFaces.push_back(Face(a, b, c));
-	//		}
-	//		faces = newFaces;
-	//	}
-	//}
-	//// Send the newly generated vertex and face arrays to the other ranks for writing
-	//int v_size;
-	//int f_size;
-	//if (ID == 0) {
-	//	v_size = vertices.size() * sizeof(Vertex);
-	//	f_size = faces.size() * sizeof(Face);
-	//}
-	//// First, send out the amount of data that will be sent
-	//MPI_Bcast(&v_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	//MPI_Bcast(&f_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	//// Get space ready for the broadcast
-	//if (ID != 0) {
-	//	vertices.resize(v_size / sizeof(Vertex));
-	//	faces.resize(f_size / sizeof(Face));
-	//}
-	//// Then, send out the data
-	//MPI_Bcast(&vertices[0], v_size, MPI_BYTE,
-	//	0, MPI_COMM_WORLD);
-	//MPI_Bcast(&faces[0], f_size, MPI_BYTE,
-	//	0, MPI_COMM_WORLD);
+				newFaces.push_back(Face(face.v1, a, c));
+				newFaces.push_back(Face(face.v2, b, a));
+				newFaces.push_back(Face(face.v3, c, b));
+				newFaces.push_back(Face(a, b, c));
+			}
+			faces = newFaces;
+		}
+	}
+	// Send the newly generated vertex and face arrays to the other ranks for writing
+	int v_size;
+	int f_size;
+	if (ID == 0) {
+		v_size = vertices.size() * sizeof(Vertex);
+		f_size = faces.size() * sizeof(Face);
+	}
+	// First, send out the amount of data that will be sent
+	MPI_Bcast(&v_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&f_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	// Get space ready for the broadcast
+	if (ID != 0) {
+		vertices.resize(v_size / sizeof(Vertex));
+		faces.resize(f_size / sizeof(Face));
+	}
+	// Then, send out the data
+	MPI_Bcast(&vertices[0], v_size, MPI_BYTE,
+		0, MPI_COMM_WORLD);
+	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
+		0, MPI_COMM_WORLD);
 
-	////TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
+	//TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
 
-	//int verticesToWrite = vertices.size() / rankCount;
-	//if (ID < (vertices.size() % rankCount)) {
-	//	verticesToWrite += 1;
-	//}
-	//int facesToWrite = faces.size() / rankCount;
-	//if (ID < (faces.size() % rankCount)) {
-	//	facesToWrite += 1;
-	//}
+	int verticesToWrite = vertices.size() / rankCount;
+	if (ID < (vertices.size() % rankCount)) {
+		verticesToWrite += 1;
+	}
+	int facesToWrite = faces.size() / rankCount;
+	if (ID < (faces.size() % rankCount)) {
+		facesToWrite += 1;
+	}
 
-	//// Write the vertices to the obj file
+	// Write the vertices to the obj file
 
-	//// Open the file, deleting it if it exists already
-	//int exists = MPI_File_open(MPI_COMM_WORLD,
-	//	(char *)"planet.obj",
-	//	MPI_MODE_CREATE | MPI_MODE_EXCL | MPI_MODE_WRONLY,
-	//	MPI_INFO_NULL,
-	//	&file);
-	//if (exists != MPI_SUCCESS) {
-	//	if (ID == 0) {
-	//		MPI_File_delete((char *)"planet.obj", MPI_INFO_NULL);
-	//	}
-	//	MPI_File_open(MPI_COMM_WORLD,
-	//		(char *)"planet.obj",
-	//		MPI_MODE_CREATE | MPI_MODE_WRONLY,
-	//		MPI_INFO_NULL,
-	//		&file);
-	//}
+	// Open the file, deleting it if it exists already
+	int exists = MPI_File_open(MPI_COMM_WORLD,
+		(char *)"planet.obj",
+		MPI_MODE_CREATE | MPI_MODE_EXCL | MPI_MODE_WRONLY,
+		MPI_INFO_NULL,
+		&file);
+	if (exists != MPI_SUCCESS) {
+		if (ID == 0) {
+			MPI_File_delete((char *)"planet.obj", MPI_INFO_NULL);
+		}
+		MPI_File_open(MPI_COMM_WORLD,
+			(char *)"planet.obj",
+			MPI_MODE_CREATE | MPI_MODE_WRONLY,
+			MPI_INFO_NULL,
+			&file);
+	}
 
-	////MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
-	////	MPI_INFO_NULL, &file);
+	//MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
+	//	MPI_INFO_NULL, &file);
 
-	//std::stringstream stream;
-	//int start = ID * verticesToWrite;
-	//int end = start + verticesToWrite;
-	//int vertexBytesPerLine = 1 				// 'v'
-	//	+ (13 * 3) + 1 	// Numbers  
-	//	+ 4 				// spaces
-	//	+ 1;				// newline
-	//MPI_Offset offset = vertexBytesPerLine * start;
-	//MPI_File_seek(file, offset, MPI_SEEK_SET);
-	//// Debug call
-	//if (end > vertices.size()) {
-	//	std::cout << "Error in getting write range (vertices)" << std::endl;
-	//}
-	//for (int v = start; v < end; v++) {
-	//	stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
-	//	std::string x = stream.str();
-	//	stream.str(std::string());
+	std::stringstream stream;
+	int start = ID * verticesToWrite;
+	int end = start + verticesToWrite;
+	int vertexBytesPerLine = 1 				// 'v'
+		+ (13 * 3) + 1 	// Numbers  
+		+ 4 				// spaces
+		+ 1;				// newline
+	MPI_Offset offset = vertexBytesPerLine * start;
+	MPI_File_seek(file, offset, MPI_SEEK_SET);
+	// Debug call
+	if (end > vertices.size()) {
+		std::cout << "Error in getting write range (vertices)" << std::endl;
+	}
+	for (int v = start; v < end; v++) {
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
+		std::string x = stream.str();
+		stream.str(std::string());
 
-	//	stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].y;
-	//	std::string y = stream.str();
-	//	stream.str(std::string());
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].y;
+		std::string y = stream.str();
+		stream.str(std::string());
 
-	//	stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].z;
-	//	std::string z = stream.str();
-	//	stream.str(std::string());
+		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].z;
+		std::string z = stream.str();
+		stream.str(std::string());
 
-	//	std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
+		std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
 
-	//	MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-	//}
-	//stream.str(std::string());
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
+	}
+	stream.str(std::string());
 
-	////Write the faces to the obj file
-	//start = ID * facesToWrite;
-	//end = start + facesToWrite;
-	//int faceBytesPerLine = 1 			// 'v'
-	//	+ (16 * 3) 	// Numbers  
-	//	+ 3 			// spaces
-	//	+ 1;			// newline
-	//offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
-	//MPI_File_seek(file, offset, MPI_SEEK_SET);
-	//// Debug call
-	//if (end > faces.size()) {
-	//	std::cout << "Error in getting write range (faces)" << std::endl;
-	//}
-	//for (int f = start; f < end; f++) {
-	//	stream << std::setw(16) << (faces[f].v1 + 1);
-	//	std::string v1 = stream.str();
-	//	stream.str(std::string());
+	//Write the faces to the obj file
+	start = ID * facesToWrite;
+	end = start + facesToWrite;
+	int faceBytesPerLine = 1 			// 'v'
+		+ (16 * 3) 	// Numbers  
+		+ 3 			// spaces
+		+ 1;			// newline
+	offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
+	MPI_File_seek(file, offset, MPI_SEEK_SET);
+	// Debug call
+	if (end > faces.size()) {
+		std::cout << "Error in getting write range (faces)" << std::endl;
+	}
+	for (int f = start; f < end; f++) {
+		stream << std::setw(16) << (faces[f].v1 + 1);
+		std::string v1 = stream.str();
+		stream.str(std::string());
 
-	//	stream << std::setw(16) << (faces[f].v2 + 1);
-	//	std::string v2 = stream.str();
-	//	stream.str(std::string());
+		stream << std::setw(16) << (faces[f].v2 + 1);
+		std::string v2 = stream.str();
+		stream.str(std::string());
 
-	//	stream << std::setw(16) << (faces[f].v3 + 1);
-	//	std::string v3 = stream.str();
-	//	stream.str(std::string());
+		stream << std::setw(16) << (faces[f].v3 + 1);
+		std::string v3 = stream.str();
+		stream.str(std::string());
 
-	//	std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
+		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
 
-	//	MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-	//}
+		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
+	}
 
-	//MPI_File_close(&file);
+	MPI_File_close(&file);
 
 	//end time
 	if (ID == 0) {
