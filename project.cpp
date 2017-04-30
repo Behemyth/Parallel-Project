@@ -117,10 +117,14 @@ public:
 class Plate {
 public:
 	int plateID;
-    float velocity;
+    float velocity; // change in angle per change in time in radians/tick
     Axis axis;
 
 };
+
+float randomFloat(float a, float b) {
+return ((b-a)*((float)rand()/RAND_MAX))+a;
+}
 
 ///////////////
 /*Global Data*/
@@ -704,6 +708,7 @@ int main(int argc, char **argv)
 	std::vector<Particle> particles;
 	std::map<int, Plate> plates;
 
+    srand(time(NULL));
 
 	/********** Initialize MPI **********/
 	int rankCount, ID;
@@ -835,6 +840,16 @@ int main(int argc, char **argv)
             }
             plateByParticleId.erase(smallestPlateID);
         }
+    }
+
+	std::map<int, Plate>::iterator itr = plates.begin();
+    Plate p;
+	for(; itr != plates.end(); itr++) {
+		p = itr->second;
+        p.velocity = randomFloat(0, 0.1); // change if faster or slower rotation of plates is wanted
+        p.axis.x = randomFloat(-1, 1);
+        p.axis.y = randomFloat(-1, 1);
+        p.axis.z = randomFloat(-1, 1);
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
