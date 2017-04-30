@@ -272,7 +272,6 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 
 	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
 	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
-
 	//gather all rank mortons on to rank 0
 	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
 
@@ -772,6 +771,7 @@ int main(int argc, char **argv)
 	}
 
 
+	std::cout << "first sort call" << std::endl;
 	//Sort data (updates the global array)
 	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 
@@ -834,7 +834,7 @@ int main(int argc, char **argv)
     for(int p = 0; p < particles.size(); p++) {
         Particle particle = particles[p];
         plates[particle.plateID].plateID = particle.plateID;
-    } 
+    }
 
 	////////////////////
 	/*Start Simulation*/
@@ -849,7 +849,7 @@ int main(int argc, char **argv)
 		/////////////////////////////////////
 		/*Create the Acceleration Structure*/
 		/////////////////////////////////////
-
+		std::cout << "second sort call" << std::endl;
 		//sort all the particles in the system by morton code
 		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
@@ -865,21 +865,31 @@ int main(int argc, char **argv)
 		removeParticles(localParticles, particles, currentParticleCount);
 
 		//collect global particle information from other ranks
-		int* recvCount = new int[rankCount];
-		int* disps = new int[rankCount];
-		int perTask = currentParticleCount * sizeof(Particle) / rankCount;
-		for (uint i = 0; i < rankCount - 1; ++i) {
-			recvCount[i] = perTask;
+		int* sizes = new int[rankCount];
+		int* offsets = new int[rankCount];
+		uint totalSize = 0;
+		uint localSize = localParticles.size() * sizeof(Particle);
+		if (ID == 0) {
+			MPI_Gather(&localSize, 1, MPI_INT, sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+				offsets[0] = 0;
+				for (int i = 1; i < rankCount; ++i) {
+					offsets[i] = offsets[i-1] + sizes[i-1];
+				}
 		}
-		disps[0] = 0;
-		for (uint i = 1; i < rankCount; ++i) {
-			disps[i] = disps[ i - 1] + recvCount[i - 1];
-		}
-		recvCount[rankCount - 1] = currentParticleCount * sizeof(Particle) % rankCount;
-		MPI_Allgatherv(localParticles.data(), currentParticleCount, MPI_BYTE, particles.data(), recvCount, disps, MPI_BYTE, MPI_COMM_WORLD);
 
-		delete[] recvCount;
-		delete[] disps;
+		/*Get total number of elements*/
+		for (int i = 0; i < rankCount; ++i) {
+			totalSize += sizes[i];
+		}
+		if (totalSize > particles.capacity()) {
+			particles.resize(particles.capacity() * 2);
+		}
+		MPI_Bcast(sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+		MPI_Bcast(offsets, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+		MPI_Allgatherv(localParticles.data(), localParticles.size(), MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, MPI_COMM_WORLD);
+
+		delete[] sizes;
+		delete[] offsets;
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
