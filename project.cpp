@@ -655,17 +655,16 @@ int main(int argc, char **argv)
 	for(int p = 0; p < particles.size(); p++) {
 		Particle particle = particles[p];
 		plates[particle.plateID].plateID = particle.plateID;
-		plates[particle.plateID].particles.push_back(particle);
 	}
 
-	//DEBUG:
+	/*//DEBUG:
 	if(ID == 0) {
 		std::cout << plates.size() << std::endl;
 		for(std::map<int, Plate>::iterator itr = plates.begin(); itr != plates.end(); itr++) {
 			Plate plate = itr->second;
-			std::cout << plate.plateID << "  " << plate.particles.size() << std::endl;
+			std::cout << plate.plateID << std::endl;
 		}
-	}
+	}*/
 
 	////////////////////
 	/*Start Simulation*/
