@@ -23,6 +23,7 @@
 #define uint unsigned int
 #define byte uint8_t
 #define PI 3.14159265359
+#define MIN_DISTANCE 20 //idk what to put here, so it'll be 20 for now
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
@@ -398,32 +399,40 @@ int findMidpoint(int v1, int v2)
 	return newV;
 }
 
-/**
-* Add particles to the global array
-* @param particles - a reference to the global array of particles
-* @param numParticles - a reference to the number of particles belonging to
-			to this rank
-* @param offset - the global array offset for this rank
-*/
-
-void addParticles(std::vector<Particle> &particles, uint &numParticles, uint offset) {
-	/*TODO add way to determine how many particles get added.
-	  Set the number of particles to 5 for now*/
-		uint numNew = 5;
-		for (uint i = 0; i < numNew; ++i) {
-			Particle p;
-			InitParticle(&p, offset + numParticles, numParticles + 1);
-			particles.push_back(p);
-			++numParticles;
-		}
+/*Calculate the distance between latitude and longitude
+ * @param lat1 first latitude in radians
+ * @param long1 first longitude in radians
+ * @param lat2 second latitude in radians
+ * @param long2 second latitude in radians*/
+double haversine(double lat1, double long1, double lat2, double long2) {
+	double u = sin ((lat2 - lat1)/2);
+	double v = sin((lon2 - lat2)/2);
+	return 2.0 * asin(sqrt(u*u + cos(lat1) * cos(lat2) * v * v));
 }
 
+/**
+* Add particles to the global array
+* @param particles - a reference to the local array of particles
+* @param numParticles - a reference to the number of particles belonging to
+			to this rank
+*/
+
+void addParticles(std::vector<Particle> &particles, uint &numParticles) {
+	//TODO add particles based on minimum distance
+}
+
+/*
+ * remove particles
+ * @param particles - local vector of particles to remove from
+ * @param ids - ids of particles to remove
+ * @param numParticles - number of global particles
+ */
 void removeParticles(std::vector<Particle> &particles, const std::vector<int> &ids,
-	int currentParticleCount, uint &numParticles, uint offset) {
+		uint &numParticles) {
 	uint numBeforeRemove = numParticles; //store number of particles before removal
-	std::vector<Particle>::iterator itr = particles.begin() + offset;
+	std::vector<Particle>::iterator itr = particles.begin();
 	bool removedParticle = false;
-	while(itr != particles.begin() + offset + numParticles) {
+	while(itr != particles.end()) {
 		for (uint i = 0; i < ids.size(); ++i) {
 			if (itr->plateID == ids[i]) {
 				itr = particles.erase(itr);
@@ -561,13 +570,34 @@ int main(int argc, char **argv)
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
-
-		addParticles(particles, currentParticleCount, particleOffset);
+		std::vector<particles> localParticles;
+		std::vector<particles>::const_iterator itr = particles.begin() + particleOffset;
+		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
+			localParticles.push_back(*itr);
+			++itr;
+		}
+		addParticles(localParticles, currentParticleCount);
 
 		//TODO: determine how to stage particles for removal
 		std::vector<int> toRemove; //list of particle IDs to remove
-		removeParticles(particles, toRemove, currentParticleCount, particleOffset);
+		removeParticles(localParticles, toRemove, currentParticleCount);
 
+		//collect global particle information from other ranks
+		int* recvCount = new int[rankCount];
+		int* disps = new int[rankCount];
+		int perTask = currentParticleCount * sizeof(Particle) / rankCount;
+		for (uint i = 0 < i < rankCount - 1; ++i) {
+			recvCount[i] = perTask;
+		}
+		disps[0] = 0;
+		for (uint i = 1 < i < rankCount; ++i) {
+			disps[i] = disps[ i - 1] + recvCount[i - 1];
+		}
+		recvCount[rankCount - 1] = currentParticleCount * sizeof(Particle) % rankCount;
+		MPI_Allgatherv(localParticles.data(), currentParticleCount, MPI_BYTE, particles.data(), recvCount, disps, MPI_BYTE, MPI_COMM_WORLD);
+
+		delete[] recvCount;
+		delete[] disps;
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
