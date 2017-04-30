@@ -278,7 +278,7 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 
 		//add least from each bin
 		for (int i = 0; i < rankCount; i++) {
-			if (count[i]>0) {
+			if (count[i] > 0) {
 				least.push(data[displacement[i]]);
 				countLeft[i]--;
 			}
@@ -426,12 +426,28 @@ int findMidpoint(int v1, int v2)
 /**
 * Return the four particles closest to this one
 *
-* @param p - the particle
-* @return the four nearest neighbors
+* @param k - the amount of neighbors to return
+* @param particles - the global particl array
+* @param size - current size of the particle array
+* @param position - the index of the particle to check
+* @return the nearest neighbors
 */
-std::vector<Particle> getNearestNeighbors(Particle p) {
-	std::vector<Particle> neighbors;
-	return neighbors;
+std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particles, uint size, uint position) {
+	std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+	int temp = 0;
+	for (int test = position; temp < k; temp++) {
+		if (test - temp >= 0) {
+			least.push(particles[test - temp]);
+		}
+		if (test+temp<size) {
+			least.push(particles[test + temp]);
+		}
+	}
+	while (least.size()>k) {
+		least.pop();
+	}
+
+	return std::vector<Particle>(least);
 }
 
 //////////////////////
@@ -543,7 +559,7 @@ int main(int argc, char **argv)
 
 	//First, get vectors for every plate
 	std::map<int, std::vector<Particle>> plates;
-	for(int p = 0; p < particles.size(); p++) {
+	for (int p = 0; p < particles.size(); p++) {
 		Particle particle = particles[p];
 		plates[particle.plateID].push_back(particle);
 	}
@@ -551,11 +567,11 @@ int main(int argc, char **argv)
 	//Next, get a list of the plates, sorted by size
 	std::multimap<int, int> platesBySize;
 	std::map<int, std::vector<Particle>>::iterator plate_itr;
-	for(plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
+	for (plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
 		int plateID = plate_itr->first;
 		std::vector<Particle> plate = plate_itr->second;
 		int size = plate.size();
-		platesBySize.insert(std::pair<int,int>(size, plateID));
+		platesBySize.insert(std::pair<int, int>(size, plateID));
 	}
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -739,12 +755,12 @@ int main(int argc, char **argv)
 
 	int verticesToWrite = vertices.size() / rankCount;
 	int extraVertices = vertices.size() % rankCount;
-	if(ID < extraVertices) {
+	if (ID < extraVertices) {
 		verticesToWrite += 1;
 	}
 	int facesToWrite = faces.size() / rankCount;
 	int extraFaces = faces.size() % rankCount;
-	if(ID < extraFaces) {
+	if (ID < extraFaces) {
 		facesToWrite += 1;
 	}
 
@@ -770,7 +786,7 @@ int main(int argc, char **argv)
 	//	MPI_INFO_NULL, &file);
 
 	std::stringstream stream;
-	 int start = ID * verticesToWrite + (ID >= extraVertices ? extraVertices : 0);
+	int start = ID * verticesToWrite + (ID >= extraVertices ? extraVertices : 0);
 	int end = start + verticesToWrite;
 	int vertexBytesPerLine = 1 				// 'v'
 		+ (13 * 3) + 1 						// Numbers  
