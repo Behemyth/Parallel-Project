@@ -8,8 +8,8 @@
 #include <limits>
 #include <map>
 #include <vector>
-#include <iomanip> 
-#include <sstream> 
+#include <iomanip>
+#include <sstream>
 #include <iostream>
 #include <algorithm>
 #include <functional>
@@ -25,6 +25,7 @@
 #define uint unsigned int
 #define byte uint8_t
 #define PI 3.14159265359
+#define MIN_DIST 20.0 //idk what to put here, so it'll be 20 for now
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
@@ -93,6 +94,7 @@ public:
 		v3 = v3_;
 	}
 
+
 	// A default constructor is needed to call resize()
 	// Otherwise, this should not be used
 	Face() {
@@ -106,6 +108,7 @@ class Plate {
 public:
 	std::vector<Particle> particles;
 	int plateID;
+
 };
 
 ///////////////
@@ -446,7 +449,7 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 			least.push(particles[test - temp - 1]);
 		}
 
-		//offset by 1 
+		//offset by 1
 		if (test + temp + 1 < size) {
 			least.push(particles[test + temp + 1]);
 		}
@@ -508,7 +511,7 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 			least.push(particles[test - temp]);
 		}
 
-		//offset by 1 
+		//offset by 1
 		if (test + temp + 1 < size) {
 			least.push(particles[test + temp + 1]);
 		}
@@ -593,6 +596,80 @@ std::vector<float> getWeights(std::vector<Particle>& nearest, float x, float y, 
 	}
 
 	return weights;
+
+/*Calculate the distance between two points
+ * @param x1 first x coordinate
+ * @param y1 first y coordinate
+ * @param x2 second x coordinate
+ * @param y2 second y coordinate
+ * @return the distance
+ */
+double distance(float x1, float y1, float x2, float y2) {
+	return sqrt(pow(x2 - x1, 2) + pow(y2-y1, 2));
+}
+
+/**
+* Add particles to the global array
+* @param particles - a reference to the local array of particles
+* @param numParticles - a reference to the number of particles belonging to
+			to this rank
+*/
+
+void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) {
+	std::vector<Particle> nearest;
+	std::vector<Particle> toAdd;
+	for (uint i = 0; i < particles.size(); ++i) {
+		nearest = getNearestNeighbors(k, particles, particles.size(), i);
+		for (uint j = 0; j < nearest.size(); ++j) {
+			float x1 = particles[i].x;
+			float x2 = nearest[j].x
+			float y1 = particles[i].y;
+			float y2 = nearest[j].y;
+			if (distance(x1, y1, x2, y2) < MIN_DIST) {
+				Particle p;
+				p.x = abs(x2 - x1);
+				p.y = abs(y2 - y1);
+				p.z = paricles[i].z;
+				p.height = particles[i].height;
+				p.plateID = particles[i].plateID;
+				p.currentRank = particles[i].currentRank;
+				p.UpdateCode();
+				toAdd.push_back(p);
+			}
+		}
+	}
+	for (uint i = 0; i < toAdd.size(); ++i) {
+		particles.push_back(toAdd[i]);
+	}
+}
+
+/*
+ * remove particles
+ * @param local - local vector of particles to remove from
+ * @param global - global vector of particles to remove from
+ * @param numParticles - number of global particles
+ */
+void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &global,
+		uint &numParticles) {
+	uint numBeforeRemove = numParticles; //store number of particles before removal
+	std::vector<Particle>::iterator itr = local.begin();
+	int diffIds = 0;
+	int totalIds = 0;
+	while(itr != local.end()) {
+		for (uint i = 0; i < global.size(); ++i) {
+			if (global[i].plateID != itr->plateID) {
+				++diffIds;
+			}
+			++totalIds;
+		}
+		if (diffIds / totalIds > .45) {
+			itr = local.erase(itr);
+			--numParticles;
+		}
+		else {
+			++itr;
+		}
+	}
 }
 
 //////////////////////
@@ -815,9 +892,31 @@ int main(int argc, char **argv)
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
+		std::vector<particles> localParticles;
+		std::vector<particles>::const_iterator itr = particles.begin() + particleOffset;
+		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
+			localParticles.push_back(*itr);
+			++itr;
+		}
+		addParticles(localParticles, nearestNeighbors, currentParticleCount);
+		removeParticles(localParticles, particles, currentParticleCount);
 
-		//TODO: create and remove particles
+		//collect global particle information from other ranks
+		int* recvCount = new int[rankCount];
+		int* disps = new int[rankCount];
+		int perTask = currentParticleCount * sizeof(Particle) / rankCount;
+		for (uint i = 0 < i < rankCount - 1; ++i) {
+			recvCount[i] = perTask;
+		}
+		disps[0] = 0;
+		for (uint i = 1 < i < rankCount; ++i) {
+			disps[i] = disps[ i - 1] + recvCount[i - 1];
+		}
+		recvCount[rankCount - 1] = currentParticleCount * sizeof(Particle) % rankCount;
+		MPI_Allgatherv(localParticles.data(), currentParticleCount, MPI_BYTE, particles.data(), recvCount, disps, MPI_BYTE, MPI_COMM_WORLD);
 
+		delete[] recvCount;
+		delete[] disps;
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
@@ -843,6 +942,7 @@ int main(int argc, char **argv)
 	MPI_Status status;
 
 	if (ID == 0) {
+
 		////////////////////////////////
 		/*Create the initial icosphere*/
 		////////////////////////////////
@@ -873,7 +973,7 @@ int main(int argc, char **argv)
 		faces.push_back(Face(0, 7, 10));
 		faces.push_back(Face(0, 10, 11));
 
-		// Adjacent faces 
+		// Adjacent faces
 		faces.push_back(Face(1, 5, 9));
 		faces.push_back(Face(5, 11, 4));
 		faces.push_back(Face(11, 10, 2));
@@ -887,7 +987,7 @@ int main(int argc, char **argv)
 		faces.push_back(Face(3, 6, 8));
 		faces.push_back(Face(3, 8, 9));
 
-		// Adjacent faces 
+		// Adjacent faces
 		faces.push_back(Face(4, 9, 5));
 		faces.push_back(Face(2, 4, 11));
 		faces.push_back(Face(6, 2, 10));
@@ -935,9 +1035,11 @@ int main(int argc, char **argv)
 
 	// Then, send out the data
 	MPI_Bcast(&vertices[0], v_size, MPI_BYTE,
+
 		0, MPI_COMM_WORLD);
 	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
 		0, MPI_COMM_WORLD);
+
 
 
 	int verticesToWrite = vertices.size() / rankCount;
@@ -950,6 +1052,7 @@ int main(int argc, char **argv)
 	if (ID < extraFaces) {
 		facesToWrite += 1;
 	}
+
 
 	// Write the vertices to the obj file
 
@@ -976,7 +1079,7 @@ int main(int argc, char **argv)
 	int start = ID * verticesToWrite + (ID >= extraVertices ? extraVertices : 0);
 	int end = start + verticesToWrite;
 	int vertexBytesPerLine = 1 				// 'v'
-		+ (13 * 3) + 1 						// Numbers  
+		+ (13 * 3) + 1 						// Numbers
 		+ 4 								// spaces
 		+ 1;								// newline
 	MPI_Offset offset = vertexBytesPerLine * start;
@@ -998,8 +1101,8 @@ int main(int argc, char **argv)
 		}
 		float avgHeight = avgDelta + 1.0f;
 
-		vertices[v].x *= avgHeight; 
-		vertices[v].y *= avgHeight; 
+		vertices[v].x *= avgHeight;
+		vertices[v].y *= avgHeight;
 		vertices[v].z *= avgHeight;
 
 		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
@@ -1017,6 +1120,7 @@ int main(int argc, char **argv)
 		std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
 
 		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
+
 	}
 	stream.str(std::string());
 
@@ -1024,7 +1128,7 @@ int main(int argc, char **argv)
 	start = ID * facesToWrite + (ID >= extraFaces ? extraFaces : 0);
 	end = start + facesToWrite;
 	int faceBytesPerLine = 1 			// 'v'
-		+ (16 * 3) 						// Numbers  
+		+ (16 * 3) 						// Numbers
 		+ 3 							// spaces
 		+ 1;							// newline
 	offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
@@ -1035,6 +1139,7 @@ int main(int argc, char **argv)
 	}
 	for (int f = start; f < end; f++) {
 		stream << std::setw(16) << (faces[f].v1 + 1);
+
 		std::string v1 = stream.str();
 		stream.str(std::string());
 
