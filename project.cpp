@@ -236,18 +236,19 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	int *disps = new int[rankCount];
 
 	//calc the rank statistics for variable particle count
-	uint localCount = inSize / rankCount;
-	uint remainder = inSize % rankCount;
+	uint localCountBytes = inSize / rankCount;
+	uint localCount = size / rankCount;
+	uint remainder = size % rankCount;
 
 	for (int i = 0; i < rankCount; i++) {
 		if (rankID < remainder) {
-			counts[i] = localCount + 1;
+			counts[i] = localCountBytes + sizeof(Particle);
+			remains[i] = localCount + 1;
 		}
 		else {
-			counts[i] = localCount;
+			counts[i] = localCountBytes;
+			remains[i] = localCount;
 		}
-
-		remains[i] = counts[i];
 	}
 
 	disps[0] = 0;
