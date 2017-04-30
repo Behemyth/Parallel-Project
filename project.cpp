@@ -511,12 +511,12 @@ int main(int argc, char **argv)
 	}
 
 	//Sort data (updates the global array)
-	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+	//Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 
 	//ACTUAL plate assigning
 
 	//First, get vectors for every plate
-	std::map<int, std::vector<Particle>> plates;
+	/*std::map<int, std::vector<Particle>> plates;
 	for(int p = 0; p < particles.size(); p++) {
 		Particle particle = particles[p];
 		plates[particle.plateID].push_back(particle);
@@ -562,7 +562,7 @@ int main(int argc, char **argv)
 				break;
 			}
 		}
-	}
+	}*/
 
 	////////////////////
 	/*Start Simulation*/
@@ -579,7 +579,7 @@ int main(int argc, char **argv)
 		/////////////////////////////////////
 
 		//sort all the particles in the system by morton code
-		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+		//Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
@@ -611,7 +611,7 @@ int main(int argc, char **argv)
 
 	MPI_File file;
 	MPI_Status status;
-	
+
 	if(ID == 0) {
 		////////////////////////////////
 		/*Create the initial icosphere*/
@@ -710,13 +710,14 @@ int main(int argc, char **argv)
 	    			0, MPI_COMM_WORLD);
 
     //TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
-
 	int verticesToWrite = vertices.size() / rankCount;
-	if(ID < (vertices.size() % rankCount)) {
+	int extraVertices = vertices.size() % rankCount;
+	if(ID < extraVertices) {
 		verticesToWrite += 1;
 	}
 	int facesToWrite = faces.size() / rankCount;
-	if(ID < (faces.size() % rankCount)) {
+	int extraFaces = faces.size() % rankCount;
+	if(ID < extraFaces) {
 		facesToWrite += 1;
 	}
 
@@ -742,17 +743,14 @@ int main(int argc, char **argv)
 						&file);
     }
 
-    //MPI_File_open(MPI_COMM_WORLD, (char *)"planet.obj", MPI_MODE_CREATE | MPI_MODE_WRONLY,
-	//	MPI_INFO_NULL, &file);
-
     std::stringstream stream;
-    int start = ID * verticesToWrite;
+    int start = ID * verticesToWrite + (ID >= extraVertices ? extraVertices : 0);
     int end = start + verticesToWrite;
     int vertexBytesPerLine = 1 				// 'v'
     				 	   + (13 * 3) + 1 	// Numbers  
     				 	   + 4 				// spaces
     				 	   + 1;				// newline
-    MPI_Offset offset = vertexBytesPerLine * start;
+    MPI_Offset offset = (vertexBytesPerLine * start);   
     MPI_File_seek(file, offset, MPI_SEEK_SET);
     // Debug call
     if(end > vertices.size()) {
@@ -778,13 +776,14 @@ int main(int argc, char **argv)
     stream.str(std::string());
 
     //Write the faces to the obj file
-    start = ID * facesToWrite;
+    start = ID * facesToWrite + (ID >= extraFaces ? extraFaces : 0);
     end = start + facesToWrite;
     int faceBytesPerLine = 1 			// 'v'
     				 	 + (16 * 3) 	// Numbers  
     				 	 + 3 			// spaces
     				 	 + 1;			// newline
-    offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
+    offset = (faceBytesPerLine * start) + 
+    			(vertexBytesPerLine * vertices.size());
     MPI_File_seek(file, offset, MPI_SEEK_SET);
     // Debug call
     if(end > faces.size()) {
