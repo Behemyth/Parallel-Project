@@ -47,17 +47,6 @@ public:
 	uint currentRank;
 	uint64_t mortonCode;
 
-	void UpdateCode() {
-
-		//map the floating point values to .. [0,UINT_MAX]
-		int max = std::numeric_limits<int>::max();
-		uint xMap = int(max*x) + max;
-		uint yMap = int(max*y) + max;
-		uint zMap = int(max*z) + max;
-
-		mortonCode = CalculateMortonCode(xMap, yMap, zMap);
-	}
-
 	bool operator < (const Particle& p) const
 	{
 		return (mortonCode < p.mortonCode);
@@ -66,28 +55,6 @@ public:
 	bool operator > (const Particle& p) const
 	{
 		return (mortonCode > p.mortonCode);
-	}
-
-
-private:
-
-	//compact the bits
-	inline uint64_t CompactBits(const uint a) {
-
-		uint64_t x = a;
-		x = x & 0x1fffff;
-		x = (x | x << 32) & 0x1f00000000ffff;
-		x = (x | x << 16) & 0x1f0000ff0000ff;
-		x = (x | x << 8) & 0x100f00f00f00f00f;
-		x = (x | x << 4) & 0x10c30c30c30c30c3;
-		x = (x | x << 2) & 0x1249249249249249;
-		return x;
-	}
-
-
-	//interleave the bits
-	inline uint64_t CalculateMortonCode(const uint x, const uint y, const uint z) {
-		return CompactBits(x) | (CompactBits(y) << 1) | (CompactBits(z) << 2);
 	}
 
 };
@@ -159,6 +126,37 @@ std::vector<Face> faces;
 ////////////////////////////////////
 
 
+//compact the bits
+inline uint64_t CompactBits(const uint a) {
+
+	uint64_t x = a;
+	x = x & 0x1fffff;
+	x = (x | x << 32) & 0x1f00000000ffff;
+	x = (x | x << 16) & 0x1f0000ff0000ff;
+	x = (x | x << 8) & 0x100f00f00f00f00f;
+	x = (x | x << 4) & 0x10c30c30c30c30c3;
+	x = (x | x << 2) & 0x1249249249249249;
+	return x;
+}
+
+
+//interleave the bits
+inline uint64_t CalculateMortonCode(const uint x, const uint y, const uint z) {
+	return CompactBits(x) | (CompactBits(y) << 1) | (CompactBits(z) << 2);
+}
+
+//unit box [-1,1]
+uint64_t CreateCode(float x, float y, float z) {
+
+	//map the floating point values to .. [0,UINT_MAX]
+	int max = std::numeric_limits<int>::max();
+	uint xMap = int(max*x) + max;
+	uint yMap = int(max*y) + max;
+	uint zMap = int(max*z) + max;
+
+	return CalculateMortonCode(xMap, yMap, zMap);
+}
+
 /**
 * Checks to see if an uint is a power of two
 *
@@ -215,6 +213,7 @@ int meshSize(uint sphereLevel) {
 	return (mesh * 20);
 }
 
+
 /**
 *Odd-Even Parallel sort
 * Sorts the particles by Morton ID, after calculating the Morton ID
@@ -229,7 +228,7 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 
 	//update all the local paricles morton codes
 	for (int i = 0; i < localSize; ++i) {
-		data[i + localOffset].UpdateCode();
+		data[i + localOffset].mortonCode = CreateCode(data[i + localOffset].x, data[i + localOffset].y, data[i + localOffset].z);
 	}
 
 	//sort the local array
@@ -370,14 +369,12 @@ void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 
 	float latitude = asin(-1 + 2 * particleID / (float)particleCount);
 
-	particle.height = 0.0f;
-
 	particle.x = cos(latitude) * cos(longitude);
 	particle.y = cos(latitude) * sin(longitude);
 	particle.z = sin(latitude);
 
 	particle.plateID = particleID;
-
+	particle.height = 0.3f;
 	particle.mortonCode = 0;
 }
 
@@ -431,7 +428,7 @@ int findMidpoint(int v1, int v2)
 }
 
 /**
-* Return the four particles closest to this one
+* Return the k particles closest to this one, not including the current particle
 *
 * @param k - the amount of neighbors to return
 * @param particles - the global particle array
@@ -443,14 +440,88 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 	std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
 	int temp = 0;
 	for (int test = position; temp < k; temp++) {
+
+		//offset by 1
+		if (test - temp - 1 >= 0) {
+			least.push(particles[test - temp - 1]);
+		}
+
+		//offset by 1 
+		if (test + temp + 1 < size) {
+			least.push(particles[test + temp + 1]);
+		}
+	}
+	while (least.size() > k) {
+		least.pop();
+	}
+
+
+	std::vector<Particle> parts;
+
+	while (least.size() > 0) {
+		parts.push_back(least.top());
+		least.pop();
+	}
+
+	return parts;
+}
+
+/**
+* Return the k particles closest to an arbitrary point in space
+*
+* @param k - the amount of neighbors to return
+* @param particles - the global particl array
+* @param size - current size of the particle array
+* @param mortonCode - the code of the particle to check
+* @return the nearest neighbors
+*/
+std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particles, uint size, uint64_t mortonCode) {
+	std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+	int temp = 0;
+
+	//binary search
+	uint left = 0;
+	uint right = size - 1;
+	uint position = 0;
+
+	while (left <= right) {
+
+		int middle = (left + right) / 2;
+
+		if (left == right - 1) {
+			position = left;
+			break;
+		}
+		else if (particles[middle].mortonCode > mortonCode) {
+			right = middle - 1;
+		}
+		else {
+			left = middle + 1;
+		}
+
+	}
+
+	for (int test = position; temp < k; temp++) {
+
+		//not offset because morton takes the lowest bound
 		if (test - temp >= 0) {
 			least.push(particles[test - temp]);
 		}
-		if (test+temp<size) {
-			least.push(particles[test + temp]);
+
+		//offset by 1 
+		if (test + temp + 1 < size) {
+			least.push(particles[test + temp + 1]);
 		}
 	}
-	while (least.size()>k) {
+	while (least.size() > k) {
+		least.pop();
+	}
+
+
+	std::vector<Particle> parts;
+
+	while (least.size() > 0) {
+		parts.push_back(least.top());
 		least.pop();
 	}
 	std::vector<Particle> neighbors;
@@ -488,6 +559,40 @@ void printMap(std::map<int, std::vector<int>> m) {
 		printVector(itr->second);
 		std::cout << std::endl;
 	}
+	return parts;
+}
+
+/**
+* Return the particles weights based on squared distance
+*
+* @param nearest - the particles to weight
+* @param x,y,z - the position in space
+* @return the weights [0,1] for each particle
+*/
+std::vector<float> getWeights(std::vector<Particle>& nearest, float x, float y, float z) {
+	std::vector<float> weights(nearest.size());
+
+	float furthest = 0.0f;
+	for (int i = 0; i < nearest.size(); i++) {
+
+		float xSqr = (x - nearest[i].x) * (x - nearest[i].x);
+		float ySqr = (y - nearest[i].y) * (y - nearest[i].y);
+		float zSqr = (z - nearest[i].z) * (z - nearest[i].z);
+
+		float dist2 = xSqr + ySqr + zSqr;
+
+		if (furthest < dist2) {
+			furthest = dist2;
+		}
+
+		weights[i] = dist2;
+	}
+
+	for (int i = 0; i < nearest.size(); i++) {
+		weights[i] = (1.0f - (weights[i] / furthest)) / nearest.size();
+	}
+
+	return weights;
 }
 
 //////////////////////
@@ -607,6 +712,31 @@ int main(int argc, char **argv)
 		while(plateByParticleId.size() > numberOfPlates) {
 			int smallestPlateID = getSmallestPlate(plateByParticleId);
 			std::vector<int> smallestPlate = plateByParticleId[smallestPlateID];
+
+	//First, get vectors for every plate
+	std::map<int, std::vector<Particle>> plates;
+	for (int p = 0; p < particles.size(); p++) {
+		Particle particle = particles[p];
+		plates[particle.plateID].push_back(particle);
+	}
+
+	//Next, get a list of the plates, sorted by size
+	std::multimap<int, int> platesBySize;
+	std::map<int, std::vector<Particle>>::iterator plate_itr;
+	for (plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
+		int plateID = plate_itr->first;
+		std::vector<Particle> plate = plate_itr->second;
+		int size = plate.size();
+		platesBySize.insert(std::pair<int, int>(size, plateID));
+	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	//Now, iterate through the plates, smallest first, and combine them, if needed
+	/*if(plates.size() > 10) {
+		std::multimap<int, int>::iterator size_itr;
+		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
+			std::vector<Particle> thisPlate = plates[size_itr->second];
 			int closestPlate;
 			for(int i = 0; i < smallestPlate.size(); i++) {
 				Particle p = particles[smallestPlate[i]];
@@ -634,7 +764,7 @@ int main(int argc, char **argv)
 			}
 			plateByParticleId.erase(smallestPlateID);
 		}
-	}
+	}*/
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	// Send out the new particle and plate vectors
@@ -809,7 +939,6 @@ int main(int argc, char **argv)
 	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
 		0, MPI_COMM_WORLD);
 
-	//TODO: CHANGE THE POINT HEIGHTS TO MATCH THE SIMULATION
 
 	int verticesToWrite = vertices.size() / rankCount;
 	int extraVertices = vertices.size() % rankCount;
@@ -857,6 +986,22 @@ int main(int argc, char **argv)
 		std::cout << "Error in getting write range (vertices)" << std::endl;
 	}
 	for (int v = start; v < end; v++) {
+
+		//modify vertices based on nearest neighbors
+		uint64_t mort = CreateCode(vertices[v].x, vertices[v].y, vertices[v].z);
+		std::vector<Particle> nearest = getNearestNeighbors(nearestNeighbors, particles, currentParticleCount, mort);
+		std::vector<float> weights = getWeights(nearest, vertices[v].x, vertices[v].y, vertices[v].z);
+
+		float avgDelta = 0.0f;
+		for (int l = 0; l < weights.size(); l++) {
+			avgDelta += (weights[l] * (nearest[l].height)) / weights.size();
+		}
+		float avgHeight = avgDelta + 1.0f;
+
+		vertices[v].x *= avgHeight; 
+		vertices[v].y *= avgHeight; 
+		vertices[v].z *= avgHeight;
+
 		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
 		std::string x = stream.str();
 		stream.str(std::string());
