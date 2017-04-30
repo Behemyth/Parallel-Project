@@ -577,7 +577,7 @@ int main(int argc, char **argv)
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Now, iterate through the plates, smallest first, and combine them, if needed
-	if(plates.size() > 10) {
+	/*if(plates.size() > 10) {
 		std::multimap<int, int>::iterator size_itr;
 		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
 			std::vector<Particle> thisPlate = plates[size_itr->second];
@@ -606,7 +606,7 @@ int main(int argc, char **argv)
 				break;
 			}
 		}
-	}
+	}*/
 
 	////////////////////
 	/*Start Simulation*/
