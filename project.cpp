@@ -106,7 +106,6 @@ public:
 
 class Plate {
 public:
-	std::vector<Particle> particles;
 	int plateID;
 
 };
@@ -562,7 +561,6 @@ void printMap(std::map<int, std::vector<int>> m) {
 		printVector(itr->second);
 		std::cout << std::endl;
 	}
-	return parts;
 }
 
 /**
@@ -596,7 +594,7 @@ std::vector<float> getWeights(std::vector<Particle>& nearest, float x, float y, 
 	}
 
 	return weights;
-
+}
 /*Calculate the distance between two points
  * @param x1 first x coordinate
  * @param y1 first y coordinate
@@ -622,18 +620,17 @@ void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) 
 		nearest = getNearestNeighbors(k, particles, particles.size(), i);
 		for (uint j = 0; j < nearest.size(); ++j) {
 			float x1 = particles[i].x;
-			float x2 = nearest[j].x
+			float x2 = nearest[j].x;
 			float y1 = particles[i].y;
 			float y2 = nearest[j].y;
 			if (distance(x1, y1, x2, y2) < MIN_DIST) {
 				Particle p;
 				p.x = abs(x2 - x1);
 				p.y = abs(y2 - y1);
-				p.z = paricles[i].z;
+				p.z = particles[i].z;
 				p.height = particles[i].height;
 				p.plateID = particles[i].plateID;
 				p.currentRank = particles[i].currentRank;
-				p.UpdateCode();
 				toAdd.push_back(p);
 			}
 		}
@@ -779,99 +776,65 @@ int main(int argc, char **argv)
 	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 
 	//ACTUAL plate assigning
-	if(ID == 0) {
-		//First, get vectors for every plate
-		std::map<int, std::vector<int>> plateByParticleId; // maps plateID to particles (in term of their location in particles)
-		for (int p = 0; p < particles.size(); p++) {
-			Particle particle = particles[p];
-			plateByParticleId[particle.plateID].push_back(p);
-		}
-		while(plateByParticleId.size() > numberOfPlates) {
-			int smallestPlateID = getSmallestPlate(plateByParticleId);
-			std::vector<int> smallestPlate = plateByParticleId[smallestPlateID];
+    if(ID == 0) {
+        //First, get vectors for every plate
+        std::map<int, std::vector<int>> plateByParticleId; // maps plateID to particles (in term of their location in particles)
+        for (int p = 0; p < particles.size(); p++) {
+            Particle particle = particles[p];
+            plateByParticleId[particle.plateID].push_back(p);
+        }
+        while(plateByParticleId.size() > numberOfPlates) {
+            int smallestPlateID = getSmallestPlate(plateByParticleId);
+            std::vector<int> smallestPlate = plateByParticleId[smallestPlateID];
+            int closestPlate;
+            for(int i = 0; i < smallestPlate.size(); i++) {
+                Particle p = particles[smallestPlate[i]];
+                std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles, initialParticleCount, (uint)smallestPlate[i]);
+                std::random_shuffle(neighbors.begin(), neighbors.end()); //ensure the nearest neighbor is randomly chosen
+                closestPlate = -1;
+                for(int n = 0; n < neighbors.size(); n++) {
+                    Particle neighbor = neighbors[n];
+                    if(neighbor.plateID != p.plateID) {
+                        closestPlate = neighbor.plateID;
+                        break;
+                    }
+                }
+                if(closestPlate > -1) {
+                    break;
+                }
+            }
+            if(closestPlate == -1) {
+                std::cout << "Error: No nearest neighbor" << std::endl;
+            }
+            //std::vector<int> parentPlate = plateByParticleId[closestPlate];
+            plateByParticleId[closestPlate].insert(plateByParticleId[closestPlate].end(), plateByParticleId[smallestPlateID].begin(), plateByParticleId[smallestPlateID].end());
+            for(int i = 0; i < plateByParticleId[closestPlate].size(); i++) {
+                particles[plateByParticleId[closestPlate][i]].plateID = closestPlate;
+            }
+            plateByParticleId.erase(smallestPlateID);
+        }
+    }
 
-	//First, get vectors for every plate
-	std::map<int, std::vector<Particle>> plates;
-	for (int p = 0; p < particles.size(); p++) {
-		Particle particle = particles[p];
-		plates[particle.plateID].push_back(particle);
-	}
+    MPI_Barrier(MPI_COMM_WORLD);
+    // Send out the new particle and plate vectors
+    int p_size;
+    if (ID == 0) {
+        p_size = particles.size() * sizeof(Particle);
+    }
+    // First, send out the amount of data that will be sent
+    MPI_Bcast(&p_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    // Get space ready for the broadcast
+    if (ID != 0) {
+        particles.resize(p_size / sizeof(Particle));
+    }
+    // Then, send out the data
+    MPI_Bcast(&particles[0], p_size, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-	//Next, get a list of the plates, sorted by size
-	std::multimap<int, int> platesBySize;
-	std::map<int, std::vector<Particle>>::iterator plate_itr;
-	for (plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
-		int plateID = plate_itr->first;
-		std::vector<Particle> plate = plate_itr->second;
-		int size = plate.size();
-		platesBySize.insert(std::pair<int, int>(size, plateID));
-	}
-
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	//Now, iterate through the plates, smallest first, and combine them, if needed
-	/*if(plates.size() > 10) {
-		std::multimap<int, int>::iterator size_itr;
-		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
-			std::vector<Particle> thisPlate = plates[size_itr->second];
-			int closestPlate;
-			for(int i = 0; i < smallestPlate.size(); i++) {
-				Particle p = particles[smallestPlate[i]];
-				std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles, initialParticleCount, smallestPlate[i]);
-				std::random_shuffle(neighbors.begin(), neighbors.end()); //ensure the nearest neighbor is randomly chosen
-				closestPlate = -1;
-				for(int n = 0; n < neighbors.size(); n++) {
-					Particle neighbor = neighbors[n];
-					if(neighbor.plateID != p.plateID) {
-						closestPlate = neighbor.plateID;
-						break;
-					}
-				}
-				if(closestPlate > -1) {
-					break;
-				}
-			}
-			if(closestPlate == -1) {
-				std::cout << "Error: No nearest neighbor" << std::endl;
-			}
-			//std::vector<int> parentPlate = plateByParticleId[closestPlate];
-			plateByParticleId[closestPlate].insert(plateByParticleId[closestPlate].end(), plateByParticleId[smallestPlateID].begin(), plateByParticleId[smallestPlateID].end());
-			for(int i = 0; i < plateByParticleId[closestPlate].size(); i++) {
-				particles[plateByParticleId[closestPlate][i]].plateID = closestPlate;
-			}
-			plateByParticleId.erase(smallestPlateID);
-		}
-	}*/
-
-	MPI_Barrier(MPI_COMM_WORLD);
-	// Send out the new particle and plate vectors
-	int p_size;
-	if (ID == 0) {
-		p_size = particles.size() * sizeof(Particle);
-	}
-	// First, send out the amount of data that will be sent
-	MPI_Bcast(&p_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	// Get space ready for the broadcast
-	if (ID != 0) {
-		particles.resize(p_size / sizeof(Particle));
-	}
-	// Then, send out the data
-	MPI_Bcast(&particles[0], p_size, MPI_BYTE, 0, MPI_COMM_WORLD);
-
-	//Fill the plates map based on the recieved particles
-	for(int p = 0; p < particles.size(); p++) {
-		Particle particle = particles[p];
-		plates[particle.plateID].plateID = particle.plateID;
-	}
-
-	/*//DEBUG:
-	if(ID == 0) {
-		std::cout << plates.size() << std::endl;
-		for(std::map<int, Plate>::iterator itr = plates.begin(); itr != plates.end(); itr++) {
-			Plate plate = itr->second;
-			std::cout << plate.plateID << std::endl;
-		}
-	}*/
+    //Fill the plates map based on the recieved particles
+    for(int p = 0; p < particles.size(); p++) {
+        Particle particle = particles[p];
+        plates[particle.plateID].plateID = particle.plateID;
+    } 
 
 	////////////////////
 	/*Start Simulation*/
@@ -892,8 +855,8 @@ int main(int argc, char **argv)
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
-		std::vector<particles> localParticles;
-		std::vector<particles>::const_iterator itr = particles.begin() + particleOffset;
+		std::vector<Particle> localParticles;
+		std::vector<Particle>::const_iterator itr = particles.begin() + particleOffset;
 		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
 			localParticles.push_back(*itr);
 			++itr;
@@ -905,11 +868,11 @@ int main(int argc, char **argv)
 		int* recvCount = new int[rankCount];
 		int* disps = new int[rankCount];
 		int perTask = currentParticleCount * sizeof(Particle) / rankCount;
-		for (uint i = 0 < i < rankCount - 1; ++i) {
+		for (uint i = 0; i < rankCount - 1; ++i) {
 			recvCount[i] = perTask;
 		}
 		disps[0] = 0;
-		for (uint i = 1 < i < rankCount; ++i) {
+		for (uint i = 1; i < rankCount; ++i) {
 			disps[i] = disps[ i - 1] + recvCount[i - 1];
 		}
 		recvCount[rankCount - 1] = currentParticleCount * sizeof(Particle) % rankCount;
