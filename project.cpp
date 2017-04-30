@@ -398,6 +398,16 @@ int findMidpoint(int v1, int v2)
 	return newV;
 }
 
+/**
+* Return the four particles closest to this one
+*
+* @param p - the particle
+* @return the four nearest neighbors
+*/
+std::vector<Particle> getNearestNeighbors(Particle p) {
+	std::vector<Particle> neighbors;
+	return neighbors;
+}
 
 //////////////////////
 /*Mainly the Program*/
@@ -426,12 +436,13 @@ int main(int argc, char **argv)
 
 	if (ID == 0) {
 		//input gets called by all mpi ranks anywho
-		if (argc != 5) {
+		if (argc != 6) {
 			std::cout << "Incorrect argument count.Usage:" << std::endl
 				<< "Particle Count" << std::endl
 				<< "Ticks" << std::endl
 				<< "Sphere Level" << std::endl
-				<< "Nearest Neighbors" << std::endl;
+				<< "Nearest Neighbors" << std::endl
+				<< "Number of Plates" << std::endl;
 		}
 	}
 
@@ -440,6 +451,7 @@ int main(int argc, char **argv)
 	uint simulationTicks = strtoumax(argv[2], NULL, 10);
 	uint sphereLevel = strtoumax(argv[3], NULL, 10);
 	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
+	uint numberOfPlates = strtoumax(argv[5], NULL, 10);
 	double startTime;
 
 	if (ID == 0) {
@@ -458,6 +470,10 @@ int main(int argc, char **argv)
 		}
 		if ((nearestNeighbors == UINTMAX_MAX && errno == ERANGE) || nearestNeighbors < 1) {
 			std::cout << "Incorrect nearest neighbors paramenter." << std::endl;
+			return 1;
+		}
+		if ((numberOfPlates == UINTMAX_MAX && errno == ERANGE) || numberOfPlates < 1) {
+			std::cout << "Incorrect number of plates paramenter." << std::endl;
 			return 1;
 		}
 
@@ -499,8 +515,54 @@ int main(int argc, char **argv)
 
 	//ACTUAL plate assigning
 
+	//First, get vectors for every plate
+	std::map<int, std::vector<Particle>> plates;
+	for(int p = 0; p < particles.size(); p++) {
+		Particle particle = particles[p];
+		plates[particle.plateID].push_back(particle);
+	}
 
+	//Next, get a list of the plates, sorted by size
+	std::multimap<int, int> platesBySize;
+	std::map<int, std::vector<Particle>>::iterator plate_itr;
+	for(plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
+		int plateID = plate_itr->first;
+		std::vector<Particle> plate = plate_itr->second;
+		int size = plate.size();
+		platesBySize.insert(std::pair<int,int>(size, plateID));
+	}
 
+	//Now, iterate through the plates, smallest first, and combine them, if needed
+	if(plates.size() > 10) {
+		std::multimap<int, int>::iterator size_itr;
+		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
+			std::vector<Particle> particles = plates[size_itr->second];
+			int closestPlate;
+			for(int p = 0; p < particles.size(); p++) {
+				Particle particle = particles[p];
+				std::vector<Particle> neighbors = getNearestNeighbors(particle);
+				closestPlate = -1;
+				for(int n = 0; n < neighbors.size(); n++) {
+					Particle neighbor = neighbors[n];
+					if(neighbor.plateID != particle.plateID) {
+						closestPlate = neighbor.plateID;
+						break;
+					}
+				}
+				if(closestPlate > -1) {
+					break;
+				}
+			}
+			for(int p = 0; p < particles.size(); p++) {
+				particles[p].plateID = closestPlate;
+			}
+			plates[closestPlate].insert(plates[closestPlate].end(), particles.begin(), particles.end());
+			plates.erase(size_itr->second);
+			if(plates.size() <= numberOfPlates) {
+				break;
+			}
+		}
+	}
 
 	////////////////////
 	/*Start Simulation*/
@@ -631,6 +693,7 @@ int main(int argc, char **argv)
 		v_size = vertices.size() * sizeof(Vertex);
 		f_size = faces.size() * sizeof(Face);
 	}
+
 	// First, send out the amount of data that will be sent
 	MPI_Bcast(&v_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&f_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -639,6 +702,7 @@ int main(int argc, char **argv)
 		vertices.resize(v_size / sizeof(Vertex));
 		faces.resize(f_size / sizeof(Face));
 	}
+
 	// Then, send out the data
 	MPI_Bcast(&vertices[0], v_size, MPI_BYTE, 
 	    			0, MPI_COMM_WORLD);
@@ -659,15 +723,18 @@ int main(int argc, char **argv)
     // Write the vertices to the obj file
 
     // Open the file, deleting it if it exists already
+
 	int exists = MPI_File_open(MPI_COMM_WORLD, 
 								(char *)"planet.obj", 
 								MPI_MODE_CREATE|MPI_MODE_EXCL|MPI_MODE_WRONLY, 
 								MPI_INFO_NULL, 
 								&file);
+
     if (exists != MPI_SUCCESS)  {
         if (ID == 0) {
             MPI_File_delete((char *)"planet.obj",MPI_INFO_NULL);
         }
+
         MPI_File_open(MPI_COMM_WORLD, 
         				(char *)"planet.obj", 
         				MPI_MODE_CREATE | MPI_MODE_WRONLY,
