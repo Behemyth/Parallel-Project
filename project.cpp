@@ -584,7 +584,7 @@ int main(int argc, char **argv)
 			int closestPlate;
 			for(int p = 0; p < thisPlate.size(); p++) {
 				Particle particle = thisPlate[p];
-				std::vector<Particle> neighbors = getNearestNeighbors(particle);
+				std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles,initialParticleCount,particle._____);
 				closestPlate = -1;
 				for(int n = 0; n < neighbors.size(); n++) {
 					Particle neighbor = neighbors[n];
