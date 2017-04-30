@@ -417,11 +417,11 @@ double distance(float x1, float y1, float x2, float y2) {
 			to this rank
 */
 
-void addParticles(std::vector<Particle> &particles, uint &numParticles) {
+void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) {
 	std::vector<Particle> nearest;
 	std::vector<Particle> toAdd;
 	for (uint i = 0; i < particles.size(); ++i) {
-		nearest = getNearestNeighbors(particles.size() - 1, particles, particles.size(), i);
+		nearest = getNearestNeighbors(k, particles, particles.size(), i);
 		for (uint j = 0; j < nearest.size(); ++j) {
 			float x1 = particles[i].x;
 			float x2 = nearest[j].x
@@ -602,7 +602,7 @@ int main(int argc, char **argv)
 			localParticles.push_back(*itr);
 			++itr;
 		}
-		addParticles(localParticles, currentParticleCount);
+		addParticles(localParticles, nearestNeighbors, currentParticleCount);
 		removeParticles(localParticles, particles, currentParticleCount);
 
 		//collect global particle information from other ranks
