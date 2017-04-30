@@ -232,8 +232,9 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	uint outSize = sizeof(Particle)*localSize;
 
 
-	int *counts = new int[rankCount];
-	int *remains = new int[rankCount];
+	int *byteCount = new int[rankCount];
+	int *count = new int[rankCount];
+	int *countLeft = new int[rankCount];
 	int *displacementBytes = new int[rankCount];
 	int *displacement = new int[rankCount];
 
@@ -244,25 +245,28 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 
 	for (int i = 0; i < rankCount; i++) {
 		if (i < remainder) {
-			counts[i] = localCountBytes + sizeof(Particle);
-			remains[i] = localCount + 1;
+			byteCount[i] = localCountBytes + sizeof(Particle);
+			count[i] = localCount + 1;
 		}
 		else {
-			counts[i] = localCountBytes;
-			remains[i] = localCount;
+			byteCount[i] = localCountBytes;
+			count[i] = localCount;
 		}
+		countLeft[i] = count[i];
 	}
 
 	displacementBytes[0] = 0;
 	displacement[0] = 0;
 	for (int i = 1; i < rankCount; i++) {
-		displacementBytes[i] = displacementBytes[i - 1] + counts[i - 1];
-		displacement[i] = displacement[i - 1] + remains[i - 1];
+		displacementBytes[i] = displacementBytes[i - 1] + byteCount[i - 1];
+		displacement[i] = displacement[i - 1] + count[i - 1];
 	}
 
+	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
+	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
 
 	//gather all rank mortons on to rank 0
-	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), counts, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
 
 
 	if (rankID == 0) {
@@ -270,24 +274,25 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 		std::priority_queue<Particle, std::vector<Particle>, std::greater<Particle> > least;
 		std::vector<Particle> finalData(data.size());
 
-		uint count = 0;
+		uint itr = 0;
 
 		//add least from each bin
 		for (int i = 0; i < rankCount; i++) {
 			least.push(data[displacement[i]]);
-			remains[i]--;
+			countLeft[i]--;
 		}
 
-		while (count != size) {
+		while (itr != size) {
 			Particle temp = least.top();
 			least.pop();
-			finalData[count] = temp;
-			if (remains[temp.currentRank] > 0) {
-				least.push(data[displacement[temp.currentRank] + (counts[temp.currentRank] - remains[temp.currentRank])]);
-				remains[temp.currentRank]--;
+			finalData[itr] = temp;
+			if (countLeft[temp.currentRank] > 0) {
+				least.push(data[displacement[temp.currentRank] + (count[temp.currentRank] - countLeft[temp.currentRank])]);
+				countLeft[temp.currentRank]--;
 			}
 
-			++count;
+			++itr;
+
 		}
 
 		//copy sorted
@@ -295,12 +300,14 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	}
 
 	//scatter new data
-	//MPI_Bcast(data.data(), inSize, MPI_BYTE, 0, MPI_COMM_WORLD);
+	MPI_Bcast(data.data(), inSize, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-	delete counts;
+	delete byteCount;
 	delete displacementBytes;
 	delete displacement;
-	delete remains;
+	delete count;
+	delete countLeft;
+
 }
 
 /**
