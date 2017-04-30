@@ -23,7 +23,7 @@
 #define uint unsigned int
 #define byte uint8_t
 #define PI 3.14159265359
-#define MIN_DISTANCE 20 //idk what to put here, so it'll be 20 for now
+#define MIN_DIST 20.0 //idk what to put here, so it'll be 20 for now
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
@@ -399,15 +399,15 @@ int findMidpoint(int v1, int v2)
 	return newV;
 }
 
-/*Calculate the distance between latitude and longitude
- * @param lat1 first latitude in radians
- * @param long1 first longitude in radians
- * @param lat2 second latitude in radians
- * @param long2 second latitude in radians*/
-double haversine(double lat1, double long1, double lat2, double long2) {
-	double u = sin ((lat2 - lat1)/2);
-	double v = sin((lon2 - lat2)/2);
-	return 2.0 * asin(sqrt(u*u + cos(lat1) * cos(lat2) * v * v));
+/*Calculate the distance between two points
+ * @param x1 first x coordinate
+ * @param y1 first y coordinate
+ * @param x2 second x coordinate
+ * @param y2 second y coordinate
+ * @return the distance
+ */
+double distance(float x1, float y1, float x2, float y2) {
+	return sqrt(pow(x2 - x1, 2) + pow(y2-y1, 2));
 }
 
 /**
@@ -418,7 +418,31 @@ double haversine(double lat1, double long1, double lat2, double long2) {
 */
 
 void addParticles(std::vector<Particle> &particles, uint &numParticles) {
-	//TODO add particles based on minimum distance
+	std::vector<Particle> nearest;
+	std::vector<Particle> toAdd;
+	for (uint i = 0; i < particles.size(); ++i) {
+		nearest = getNearestNeighbors(particles.size() - 1, particles, particles.size(), i);
+		for (uint j = 0; j < nearest.size(); ++j) {
+			float x1 = particles[i].x;
+			float x2 = nearest[j].x
+			float y1 = particles[i].y;
+			float y2 = nearest[j].y;
+			if (distance(x1, y1, x2, y2) < MIN_DIST) {
+				Particle p;
+				p.x = abs(x2 - x1);
+				p.y = abs(y2 - y1);
+				p.z = paricles[i].z;
+				p.height = particles[i].height;
+				p.plateID = particles[i].plateID;
+				p.currentRank = particles[i].currentRank;
+				p.UpdateCode();
+				toAdd.push_back(p);
+			}
+		}
+	}
+	for (uint i = 0; i < toAdd.size(); ++i) {
+		particles.push_back(toAdd[i]);
+	}
 }
 
 /*
