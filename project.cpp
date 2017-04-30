@@ -577,13 +577,13 @@ int main(int argc, char **argv)
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Now, iterate through the plates, smallest first, and combine them, if needed
-	/*if(plates.size() > 10) {
+	if(plates.size() > 10) {
 		std::multimap<int, int>::iterator size_itr;
 		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
-			std::vector<Particle> particles = plates[size_itr->second];
+			std::vector<Particle> thisPlate = plates[size_itr->second];
 			int closestPlate;
-			for(int p = 0; p < particles.size(); p++) {
-				Particle particle = particles[p];
+			for(int p = 0; p < thisPlate.size(); p++) {
+				Particle particle = thisPlate[p];
 				std::vector<Particle> neighbors = getNearestNeighbors(particle);
 				closestPlate = -1;
 				for(int n = 0; n < neighbors.size(); n++) {
@@ -597,16 +597,16 @@ int main(int argc, char **argv)
 					break;
 				}
 			}
-			for(int p = 0; p < particles.size(); p++) {
-				particles[p].plateID = closestPlate;
+			for(int p = 0; p < thisPlate.size(); p++) {
+				thisPlate[p].plateID = closestPlate;
 			}
-			plates[closestPlate].insert(plates[closestPlate].end(), particles.begin(), particles.end());
+			plates[closestPlate].insert(plates[closestPlate].end(), thisPlate.begin(), thisPlate.end());
 			plates.erase(size_itr->second);
 			if(plates.size() <= numberOfPlates) {
 				break;
 			}
 		}
-	}*/
+	}
 
 	////////////////////
 	/*Start Simulation*/
