@@ -511,7 +511,7 @@ int main(int argc, char **argv)
 	}
 
 	//Sort data (updates the global array)
-	//Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 
 	//ACTUAL plate assigning
 
@@ -531,6 +531,8 @@ int main(int argc, char **argv)
 		int size = plate.size();
 		platesBySize.insert(std::pair<int,int>(size, plateID));
 	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Now, iterate through the plates, smallest first, and combine them, if needed
 	if(plates.size() > 10) {
@@ -579,7 +581,7 @@ int main(int argc, char **argv)
 		/////////////////////////////////////
 
 		//sort all the particles in the system by morton code
-		//Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
 
 		//TODO: update particles using k nearest neighbors
