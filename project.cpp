@@ -134,6 +134,13 @@ public:
 	}
 };
 
+class Plate {
+public:
+	std::vector<Particle> particles;
+	int size;
+	int plateID;
+};
+
 ///////////////
 /*Global Data*/
 ///////////////
@@ -427,7 +434,7 @@ int findMidpoint(int v1, int v2)
 * Return the four particles closest to this one
 *
 * @param k - the amount of neighbors to return
-* @param particles - the global particl array
+* @param particles - the global particle array
 * @param size - current size of the particle array
 * @param position - the index of the particle to check
 * @return the nearest neighbors
@@ -446,8 +453,13 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 	while (least.size()>k) {
 		least.pop();
 	}
-
-	return std::vector<Particle>(least);
+	std::vector<Particle> neighbors;
+	while (least.empty() == false)
+	{
+    	neighbors.push_back(least.top());
+    	least.pop();
+	}
+	return neighbors;
 }
 
 //////////////////////
@@ -462,6 +474,7 @@ int main(int argc, char **argv)
 	////////////////////////////
 
 	std::vector<Particle> particles;
+	std::map<int, Plate> plates;
 
 
 	/********** Initialize MPI **********/
@@ -557,53 +570,54 @@ int main(int argc, char **argv)
 
 	//ACTUAL plate assigning
 
-	//First, get vectors for every plate
-	std::map<int, std::vector<Particle>> plates;
-	for (int p = 0; p < particles.size(); p++) {
-		Particle particle = particles[p];
-		plates[particle.plateID].push_back(particle);
-	}
+	if(ID == 0) {
+		//First, get vectors for every plate
+		//std::map<int, std::vector<int>> plates; // maps plateID to particles (in term of their location in particles)
+		for (int p = 0; p < particles.size(); p++) {
+			Particle particle = particles[p];
+			plates[particle.plateID].particles.push_back(p);
 
-	//Next, get a list of the plates, sorted by size
-	std::multimap<int, int> platesBySize;
-	std::map<int, std::vector<Particle>>::iterator plate_itr;
-	for (plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
-		int plateID = plate_itr->first;
-		std::vector<Particle> plate = plate_itr->second;
-		int size = plate.size();
-		platesBySize.insert(std::pair<int, int>(size, plateID));
-	}
+		}
 
-	MPI_Barrier(MPI_COMM_WORLD);
+		//Next, get a list of the plates, sorted by size
+		std::multimap<int, int> platesBySize;
+		std::map<int, std::vector<int>>::iterator plate_itr;
+		for (plate_itr = plates.begin(); plate_itr != plates.end(); plate_itr++) {
+			int plateID = plate_itr->first;
+			std::vector<int> plate = plate_itr->second;
+			int size = plate.size();
+			platesBySize.insert(std::pair<int, int>(size, plateID));
+		}
 
-	//Now, iterate through the plates, smallest first, and combine them, if needed
-	if(plates.size() > 10) {
-		std::multimap<int, int>::iterator size_itr;
-		for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
-			std::vector<Particle> thisPlate = plates[size_itr->second];
-			int closestPlate;
-			for(int p = 0; p < thisPlate.size(); p++) {
-				Particle particle = thisPlate[p];
-				std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles,initialParticleCount,particle._____);
-				closestPlate = -1;
-				for(int n = 0; n < neighbors.size(); n++) {
-					Particle neighbor = neighbors[n];
-					if(neighbor.plateID != particle.plateID) {
-						closestPlate = neighbor.plateID;
+		//Now, iterate through the plates, smallest first, and combine them, if needed
+		if(plates.size() > numberOfPlates) {
+			std::multimap<int, int>::iterator size_itr;
+			for(size_itr = platesBySize.begin(); size_itr != platesBySize.end(); size_itr++) {
+				std::vector<int> thisPlate = plates[size_itr->second];
+				int closestPlate;
+				for(int p = 0; p < thisPlate.size(); p++) {
+					Particle particle = particles[thisPlate[p]];
+					std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles, initialParticleCount, thisPlate[p]);
+					closestPlate = -1;
+					for(int n = 0; n < neighbors.size(); n++) {
+						Particle neighbor = neighbors[n];
+						if(neighbor.plateID != particle.plateID) {
+							closestPlate = neighbor.plateID;
+							break;
+						}
+					}
+					if(closestPlate > -1) {
 						break;
 					}
 				}
-				if(closestPlate > -1) {
+				for(int p = 0; p < thisPlate.size(); p++) {
+					particles[thisPlate[p]].plateID = closestPlate;
+				}
+				plates[closestPlate].insert(plates[closestPlate].end(), thisPlate.begin(), thisPlate.end());
+				plates.erase(size_itr->second);
+				if(plates.size() <= numberOfPlates) {
 					break;
 				}
-			}
-			for(int p = 0; p < thisPlate.size(); p++) {
-				thisPlate[p].plateID = closestPlate;
-			}
-			plates[closestPlate].insert(plates[closestPlate].end(), thisPlate.begin(), thisPlate.end());
-			plates.erase(size_itr->second);
-			if(plates.size() <= numberOfPlates) {
-				break;
 			}
 		}
 	}
