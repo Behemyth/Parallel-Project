@@ -449,7 +449,8 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 			least.push(particles[test - temp - 1]);
 		}
 
-		//offset by 1
+		//offset by 1 
+
 		if (test + temp + 1 < size) {
 			least.push(particles[test + temp + 1]);
 		}
@@ -511,7 +512,7 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 			least.push(particles[test - temp]);
 		}
 
-		//offset by 1
+		//offset by 1 
 		if (test + temp + 1 < size) {
 			least.push(particles[test + temp + 1]);
 		}
@@ -520,20 +521,13 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 		least.pop();
 	}
 
-
 	std::vector<Particle> parts;
 
 	while (least.size() > 0) {
 		parts.push_back(least.top());
 		least.pop();
 	}
-	std::vector<Particle> neighbors;
-	while (least.empty() == false)
-	{
-    	neighbors.push_back(least.top());
-    	least.pop();
-	}
-	return neighbors;
+	return parts;
 }
 
 int getSmallestPlate(std::map<int, std::vector<int>>& plates) {
@@ -670,6 +664,39 @@ void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &
 			++itr;
 		}
 	}
+}
+
+/**
+* Return the particles weights based on squared distance
+*
+* @param nearest - the particles to weight
+* @param x,y,z - the position in space
+* @return the weights [0,1] for each particle
+*/
+std::vector<float> getWeights(std::vector<Particle>& nearest, float x, float y, float z) {
+	std::vector<float> weights(nearest.size());
+
+	float furthest = 0.0f;
+	for (int i = 0; i < nearest.size(); i++) {
+
+		float xSqr = (x - nearest[i].x) * (x - nearest[i].x);
+		float ySqr = (y - nearest[i].y) * (y - nearest[i].y);
+		float zSqr = (z - nearest[i].z) * (z - nearest[i].z);
+
+		float dist2 = xSqr + ySqr + zSqr;
+
+		if (furthest < dist2) {
+			furthest = dist2;
+		}
+
+		weights[i] = dist2;
+	}
+
+	for (int i = 0; i < nearest.size(); i++) {
+		weights[i] = (1.0f - (weights[i] / furthest)) / nearest.size();
+	}
+
+	return weights;
 }
 
 //////////////////////
@@ -817,7 +844,7 @@ int main(int argc, char **argv)
 			int closestPlate;
 			for(int i = 0; i < smallestPlate.size(); i++) {
 				Particle p = particles[smallestPlate[i]];
-				std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles, initialParticleCount, smallestPlate[i]);
+				std::vector<Particle> neighbors = getNearestNeighbors(nearestNeighbors, particles, initialParticleCount, (uint)smallestPlate[i]);
 				std::random_shuffle(neighbors.begin(), neighbors.end()); //ensure the nearest neighbor is randomly chosen
 				closestPlate = -1;
 				for(int n = 0; n < neighbors.size(); n++) {
@@ -1040,8 +1067,6 @@ int main(int argc, char **argv)
 	MPI_Bcast(&faces[0], f_size, MPI_BYTE,
 		0, MPI_COMM_WORLD);
 
-
-
 	int verticesToWrite = vertices.size() / rankCount;
 	int extraVertices = vertices.size() % rankCount;
 	if (ID < extraVertices) {
@@ -1101,8 +1126,8 @@ int main(int argc, char **argv)
 		}
 		float avgHeight = avgDelta + 1.0f;
 
-		vertices[v].x *= avgHeight;
-		vertices[v].y *= avgHeight;
+		vertices[v].x *= avgHeight; 
+		vertices[v].y *= avgHeight; 
 		vertices[v].z *= avgHeight;
 
 		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].x;
