@@ -1,3 +1,5 @@
+#define __STDC_LIMIT_MACROS 1
+
 #include <mpi.h>
 #include <math.h>
 #include <stdio.h>
@@ -25,7 +27,7 @@
 #define uint unsigned int
 #define byte uint8_t
 #define PI 3.14159265359
-#define MIN_DIST 20.0 //idk what to put here, so it'll be 20 for now
+#define MIN_DIST 20.0
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
@@ -538,8 +540,8 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
     return neighbors;
 }
 
-int getSmallestPlate(std::map<int, std::vector<int>>& plates) {
-    std::map<int, std::vector<int>>::iterator itr = plates.begin();
+int getSmallestPlate(std::map<int, std::vector<int> >& plates) {
+    std::map<int, std::vector<int> >::iterator itr = plates.begin();
     int size = itr->second.size();
     int id = itr->first;
     for( ; itr != plates.end(); itr++) {
@@ -557,8 +559,8 @@ void printVector(std::vector<int> v) {
     }
 }
 
-void printMap(std::map<int, std::vector<int>> m) {
-    std::map<int, std::vector<int>>::iterator itr = m.begin();
+void printMap(std::map<int, std::vector<int> > m) {
+    std::map<int, std::vector<int> >::iterator itr = m.begin();
     for(; itr != m.end(); itr++) {
         std::cout << itr->first << ":  ";
         printVector(itr->second);
@@ -631,7 +633,7 @@ void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) 
                 p.x = abs(x2 - x1);
                 p.y = abs(y2 - y1);
                 p.z = particles[i].z;
-                p.height = particles[i].height;
+                p.height = 0.0;
                 p.plateID = particles[i].plateID;
                 p.currentRank = particles[i].currentRank;
                 toAdd.push_back(p);
@@ -781,7 +783,7 @@ int main(int argc, char **argv)
     //ACTUAL plate assigning
     if(ID == 0) {
         //First, get vectors for every plate
-        std::map<int, std::vector<int>> plateByParticleId; // maps plateID to particles (in term of their location in particles)
+        std::map<int, std::vector<int> > plateByParticleId; // maps plateID to particles (in term of their location in particles)
         for (int p = 0; p < particles.size(); p++) {
             Particle particle = particles[p];
             plateByParticleId[particle.plateID].push_back(p);
