@@ -1,3 +1,5 @@
+#define __STDC_LIMIT_MACROS 1
+
 #include <mpi.h>
 #include <math.h>
 #include <stdio.h>
@@ -25,7 +27,7 @@
 #define uint unsigned int
 #define byte uint8_t
 #define PI 3.14159265359
-#define MIN_DIST 20.0 //idk what to put here, so it'll be 20 for now
+#define MIN_DIST 20.0
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
@@ -37,29 +39,29 @@
 class Particle {
 
 public:
-	//x,y,z position of the particle on a sphere Radius: 1
-	float x;
-	float y;
-	float z;
-	float px;
+    //x,y,z position of the particle on a sphere Radius: 1
+    float x;
+    float y;
+    float z;
+    float px;
 	float py;
 	float pz;
 
-	float height;	//delta from sea level
+    float height;   //delta from sea level
 
-	uint plateID;
-	uint currentRank;
-	uint64_t mortonCode;
+    uint plateID;
+    uint currentRank;
+    uint64_t mortonCode;
 
-	bool operator < (const Particle& p) const
-	{
-		return (mortonCode < p.mortonCode);
-	}
+    bool operator < (const Particle& p) const
+    {
+        return (mortonCode < p.mortonCode);
+    }
 
-	bool operator > (const Particle& p) const
-	{
-		return (mortonCode > p.mortonCode);
-	}
+    bool operator > (const Particle& p) const
+    {
+        return (mortonCode > p.mortonCode);
+    }
 
 };
 
@@ -198,7 +200,7 @@ uint64_t CreateCode(float x, float y, float z) {
 */
 bool IsPower2(uint x) {
 
-	return x && !(x & (x - 1));
+    return x && !(x & (x - 1));
 
 }
 
@@ -210,16 +212,16 @@ bool IsPower2(uint x) {
 * @return bool - Is it a legal number of faces
 */
 bool IsLegalIcosphereFaceNumber(uint x) {
-	x = x / 20;
-	if (x == 0)
-		return false;
-	while (x != 1)
-	{
-		if (x % 4 != 0)
-			return false;
-		x = x / 4;
-	}
-	return true;
+    x = x / 20;
+    if (x == 0)
+        return false;
+    while (x != 1)
+    {
+        if (x % 4 != 0)
+            return false;
+        x = x / 4;
+    }
+    return true;
 }
 
 /**
@@ -231,8 +233,8 @@ bool IsLegalIcosphereFaceNumber(uint x) {
 * @return the levels of recursion necessary
 */
 int IcosphereLevel(uint x) {
-	x = x / 20;
-	return log(x) / log(4);
+    x = x / 20;
+    return log(x) / log(4);
 }
 
 /**
@@ -242,8 +244,8 @@ int IcosphereLevel(uint x) {
 * @return - the mesh size given that number of recursions
 */
 int meshSize(uint sphereLevel) {
-	int mesh = pow(sphereLevel, 4);
-	return (mesh * 20);
+    int mesh = pow(sphereLevel, 4);
+    return (mesh * 20);
 }
 
 
@@ -304,7 +306,12 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
 	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
 	//gather all rank mortons on to rank 0
-	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	if (rankID == 0) {
+			MPI_Gatherv(MPI_IN_PLACE, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	}
+	else {
+			MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	}
 
 
 	if (rankID == 0) {
@@ -375,7 +382,6 @@ inline void ParticlestoSimulate(const uint rankID, const uint rankCount, const u
 		index = (count*rankID) + remainder;
 
 	}
-
 }
 
 /**
@@ -386,28 +392,28 @@ inline void ParticlestoSimulate(const uint rankID, const uint rankCount, const u
 
 void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 
-	//calc lat and long in radians
-	float longitude = GOLDEN_ANGLE_RADS*particleID;
+    //calc lat and long in radians
+    float longitude = GOLDEN_ANGLE_RADS*particleID;
 
-	//TODO: is this needed?
+    //TODO: is this needed?
 
-	/*lon /= 2 * PI;
-	lon -= floor(lon);
-	lon *= 2 * PI;*/
+    /*lon /= 2 * PI;
+    lon -= floor(lon);
+    lon *= 2 * PI;*/
 
-	if (longitude > PI) {
-		longitude -= 2 * PI;
-	}
+    if (longitude > PI) {
+        longitude -= 2 * PI;
+    }
 
-	float latitude = asin(-1 + 2 * particleID / (float)particleCount);
+    float latitude = asin(-1 + 2 * particleID / (float)particleCount);
 
-	particle.x = cos(latitude) * cos(longitude);
-	particle.y = cos(latitude) * sin(longitude);
-	particle.z = sin(latitude);
+    particle.x = cos(latitude) * cos(longitude);
+    particle.y = cos(latitude) * sin(longitude);
+    particle.z = sin(latitude);
 
-	particle.plateID = particleID;
-	particle.height = 0.3f;
-	particle.mortonCode = 0;
+    particle.plateID = particleID;
+    particle.height = 0.3f;
+    particle.mortonCode = 0;
 }
 
 /**
@@ -419,9 +425,9 @@ void InitParticle(Particle& particle, uint particleID, uint particleCount) {
 */
 int addVertex(Vertex v)
 {
-	double length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-	vertices.push_back(Vertex(v.x / length, v.y / length, v.z / length));
-	return vertices.size() - 1;
+    double length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    vertices.push_back(Vertex(v.x / length, v.y / length, v.z / length));
+    return vertices.size() - 1;
 }
 
 /**
@@ -434,29 +440,29 @@ int addVertex(Vertex v)
 */
 int findMidpoint(int v1, int v2)
 {
-	// determines if the midpoint already exists, by first
-	// getting the unique ID of these two vertices and then
-	// checking the cache
-	uint64_t smaller = (v1 < v2) ? v1 : v2;
-	uint64_t greater = (v1 < v2) ? v2 : v1;
-	uint64_t key = (smaller << 32) + greater;
+    // determines if the midpoint already exists, by first
+    // getting the unique ID of these two vertices and then
+    // checking the cache
+    uint64_t smaller = (v1 < v2) ? v1 : v2;
+    uint64_t key = (smaller << 32) + greater;
+    uint64_t greater = (v1 < v2) ? v2 : v1;
 
-	if (vertexCache.count(key) > 0)
-	{
-		return vertexCache[key];
-	}
+    if (vertexCache.count(key) > 0)
+    {
+        return vertexCache[key];
+    }
 
-	// if this midpoint does not exist yet, calculuate its location
-	Vertex vertex1 = vertices[v1];
-	Vertex vertex2 = vertices[v2];
-	Vertex midpoint = Vertex((vertex1.x + vertex2.x) / 2.0,
-		(vertex1.y + vertex2.y) / 2.0,
-		(vertex1.z + vertex2.z) / 2.0);
-	int newV = addVertex(midpoint);
+    // if this midpoint does not exist yet, calculuate its location
+    Vertex vertex1 = vertices[v1];
+    Vertex vertex2 = vertices[v2];
+    Vertex midpoint = Vertex((vertex1.x + vertex2.x) / 2.0,
+        (vertex1.y + vertex2.y) / 2.0,
+        (vertex1.z + vertex2.z) / 2.0);
+    int newV = addVertex(midpoint);
 
-	// store the new midpoint in the cache
-	vertexCache[key] = newV;
-	return newV;
+    // store the new midpoint in the cache
+    vertexCache[key] = newV;
+    return newV;
 }
 
 /**
@@ -469,33 +475,33 @@ int findMidpoint(int v1, int v2)
 * @return the nearest neighbors
 */
 std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particles, uint size, uint position) {
-	std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
-	int temp = 0;
-	for (int test = position; temp < k; temp++) {
+    std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+    int temp = 0;
+    for (int test = position; temp < k; temp++) {
 
-		//offset by 1
-		if (test - temp - 1 >= 0) {
-			least.push(particles[test - temp - 1]);
-		}
+        //offset by 1
+        if (test - temp - 1 >= 0) {
+            least.push(particles[test - temp - 1]);
+        }
 
-		//offset by 1
-		if (test + temp + 1 < size) {
-			least.push(particles[test + temp + 1]);
-		}
-	}
-	while (least.size() > k) {
-		least.pop();
-	}
+        //offset by 1
+        if (test + temp + 1 < size) {
+            least.push(particles[test + temp + 1]);
+        }
+    }
+    while (least.size() > k) {
+        least.pop();
+    }
 
 
-	std::vector<Particle> parts;
+    std::vector<Particle> parts;
 
-	while (least.size() > 0) {
-		parts.push_back(least.top());
-		least.pop();
-	}
+    while (least.size() > 0) {
+        parts.push_back(least.top());
+        least.pop();
+    }
 
-	return parts;
+    return parts;
 }
 
 /**
@@ -508,89 +514,89 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 * @return the nearest neighbors
 */
 std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particles, uint size, uint64_t mortonCode) {
-	std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
-	int temp = 0;
+    std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+    int temp = 0;
 
-	//binary search
-	uint left = 0;
-	uint right = size - 1;
-	uint position = 0;
+    //binary search
+    uint left = 0;
+    uint right = size - 1;
+    uint position = 0;
 
-	while (left <= right) {
+    while (left <= right) {
 
-		int middle = (left + right) / 2;
+        int middle = (left + right) / 2;
 
-		if (left == right - 1) {
-			position = left;
-			break;
-		}
-		else if (particles[middle].mortonCode > mortonCode) {
-			right = middle - 1;
-		}
-		else {
-			left = middle + 1;
-		}
+        if (left == right - 1) {
+            position = left;
+            break;
+        }
+        else if (particles[middle].mortonCode > mortonCode) {
+            right = middle - 1;
+        }
+        else {
+            left = middle + 1;
+        }
 
-	}
+    }
 
-	for (int test = position; temp < k; temp++) {
+    for (int test = position; temp < k; temp++) {
 
-		//not offset because morton takes the lowest bound
-		if (test - temp >= 0) {
-			least.push(particles[test - temp]);
-		}
+        //not offset because morton takes the lowest bound
+        if (test - temp >= 0) {
+            least.push(particles[test - temp]);
+        }
 
-		//offset by 1
-		if (test + temp + 1 < size) {
-			least.push(particles[test + temp + 1]);
-		}
-	}
-	while (least.size() > k) {
-		least.pop();
-	}
+        //offset by 1
+        if (test + temp + 1 < size) {
+            least.push(particles[test + temp + 1]);
+        }
+    }
+    while (least.size() > k) {
+        least.pop();
+    }
 
 
-	std::vector<Particle> parts;
+    std::vector<Particle> parts;
 
-	while (least.size() > 0) {
-		parts.push_back(least.top());
-		least.pop();
-	}
-	std::vector<Particle> neighbors;
-	while (least.empty() == false)
-	{
-    	neighbors.push_back(least.top());
-    	least.pop();
-	}
-	return neighbors;
+    while (least.size() > 0) {
+        parts.push_back(least.top());
+        least.pop();
+    }
+    std::vector<Particle> neighbors;
+    while (least.empty() == false)
+    {
+        neighbors.push_back(least.top());
+        least.pop();
+    }
+    return neighbors;
 }
 
-int getSmallestPlate(std::map<int, std::vector<int>>& plates) {
-	std::map<int, std::vector<int>>::iterator itr = plates.begin();
-	int size = itr->second.size();
-	int id = itr->first;
-	for( ; itr != plates.end(); itr++) {
-		if(itr->second.size() < size) {
-			size = itr->second.size();
-			id = itr->first;
-		}
-	}
-	return id;
+int getSmallestPlate(std::map<int, std::vector<int> >& plates) {
+    std::map<int, std::vector<int> >::iterator itr = plates.begin();
+    int size = itr->second.size();
+    int id = itr->first;
+    for( ; itr != plates.end(); itr++) {
+        if(itr->second.size() < size) {
+            size = itr->second.size();
+            id = itr->first;
+        }
+    }
+    return id;
 }
 
 void printVector(std::vector<int> v) {
-	for(int i = 0; i < v.size(); i++) {
-		std::cout << v[i] << "  ";
-	}
+    for(int i = 0; i < v.size(); i++) {
+        std::cout << v[i] << "  ";
+    }
 }
 
-void printMap(std::map<int, std::vector<int>> m) {
-	std::map<int, std::vector<int>>::iterator itr = m.begin();
-	for(; itr != m.end(); itr++) {
-		std::cout << itr->first << ":  ";
-		printVector(itr->second);
-		std::cout << std::endl;
-	}
+void printMap(std::map<int, std::vector<int> > m) {
+    std::map<int, std::vector<int> >::iterator itr = m.begin();
+    for(; itr != m.end(); itr++) {
+        std::cout << itr->first << ":  ";
+        printVector(itr->second);
+        std::cout << std::endl;
+    }
 }
 
 /**
@@ -633,41 +639,42 @@ std::vector<float> getWeights(std::vector<Particle>& nearest, float x, float y, 
  * @return the distance
  */
 double distance(float x1, float y1, float x2, float y2) {
-	return sqrt(pow(x2 - x1, 2) + pow(y2-y1, 2));
+    return sqrt(pow(x2 - x1, 2) + pow(y2-y1, 2));
 }
 
 /**
 * Add particles to the global array
 * @param particles - a reference to the local array of particles
 * @param numParticles - a reference to the number of particles belonging to
-			to this rank
+            to this rank
 */
 
 void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) {
-	std::vector<Particle> nearest;
-	std::vector<Particle> toAdd;
-	for (uint i = 0; i < particles.size(); ++i) {
-		nearest = getNearestNeighbors(k, particles, particles.size(), i);
-		for (uint j = 0; j < nearest.size(); ++j) {
-			float x1 = particles[i].x;
-			float x2 = nearest[j].x;
-			float y1 = particles[i].y;
-			float y2 = nearest[j].y;
-			if (distance(x1, y1, x2, y2) < MIN_DIST) {
-				Particle p;
-				p.x = abs(x2 - x1);
-				p.y = abs(y2 - y1);
-				p.z = particles[i].z;
-				p.height = particles[i].height;
-				p.plateID = particles[i].plateID;
-				p.currentRank = particles[i].currentRank;
-				toAdd.push_back(p);
-			}
-		}
-	}
-	for (uint i = 0; i < toAdd.size(); ++i) {
-		particles.push_back(toAdd[i]);
-	}
+		std::vector<Particle> nearest;
+    std::vector<Particle> toAdd;
+    for (uint i = 0; i < particles.size(); ++i) {
+        nearest = getNearestNeighbors(k, particles, particles.size(), i);
+        for (uint j = 0; j < nearest.size(); ++j) {
+            float x1 = particles[i].x;
+            float x2 = nearest[j].x;
+            float y1 = particles[i].y;
+            float y2 = nearest[j].y;
+            if (distance(x1, y1, x2, y2) < MIN_DIST) {
+                Particle p;
+                p.x = abs(x2 - x1);
+                p.y = abs(y2 - y1);
+                p.z = particles[i].z;
+                p.height = 0.0;
+                p.plateID = particles[i].plateID;
+                p.currentRank = particles[i].currentRank;
+                toAdd.push_back(p);
+           }
+        }
+    }
+
+    for (uint i = 0; i < toAdd.size(); ++i) {
+        particles.push_back(toAdd[i]);
+    }
 }
 
 /*
@@ -677,26 +684,26 @@ void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) 
  * @param numParticles - number of global particles
  */
 void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &global,
-		uint &numParticles) {
-	uint numBeforeRemove = numParticles; //store number of particles before removal
-	std::vector<Particle>::iterator itr = local.begin();
-	int diffIds = 0;
-	int totalIds = 0;
-	while(itr != local.end()) {
-		for (uint i = 0; i < global.size(); ++i) {
-			if (global[i].plateID != itr->plateID) {
-				++diffIds;
-			}
-			++totalIds;
-		}
-		if (diffIds / totalIds > .45) {
-			itr = local.erase(itr);
-			--numParticles;
-		}
-		else {
-			++itr;
-		}
-	}
+        uint &numParticles) {
+    uint numBeforeRemove = numParticles; //store number of particles before removal
+    std::vector<Particle>::iterator itr = local.begin();
+    int diffIds = 0;
+    int totalIds = 0;
+    while(itr != local.end()) {
+        for (uint i = 0; i < global.size(); ++i) {
+            if (global[i].plateID != itr->plateID) {
+                ++diffIds;
+            }
+            ++totalIds;
+        }
+        if (diffIds / totalIds > .45) {
+            itr = local.erase(itr);
+            --numParticles;
+        }
+        else {
+            ++itr;
+        }
+    }
 }
 
 void update_position(Particle &p, Axis axis, float angle) {
@@ -716,111 +723,108 @@ void update_position(Particle &p, Axis axis, float angle) {
 int main(int argc, char **argv)
 {
 
-	////////////////////////////
-	/*Setup Global Information*/
-	////////////////////////////
+    ////////////////////////////
+    /*Setup Global Information*/
+    ////////////////////////////
 
-	std::vector<Particle> particles;
-	std::map<int, Plate> plates;
+    std::vector<Particle> particles;
+    std::map<int, Plate> plates;
 
     srand(time(NULL));
 
-	/********** Initialize MPI **********/
-	int rankCount, ID;
+    /********** Initialize MPI **********/
+    int rankCount, ID;
 
-	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &rankCount);
-	MPI_Comm_rank(MPI_COMM_WORLD, &ID);
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &rankCount);
+    MPI_Comm_rank(MPI_COMM_WORLD, &ID);
 
-	// Init 16,384 RNG streams - each rank has an independent stream
-	InitDefault();
-	MPI_Barrier(MPI_COMM_WORLD);
+    // Init 16,384 RNG streams - each rank has an independent stream
+    InitDefault();
+    MPI_Barrier(MPI_COMM_WORLD);
 
-	if (ID == 0) {
-		//input gets called by all mpi ranks anywho
-		if (argc != 6) {
-			std::cout << "Incorrect argument count.Usage:" << std::endl
-				<< "Particle Count" << std::endl
-				<< "Ticks" << std::endl
-				<< "Sphere Level" << std::endl
-				<< "Nearest Neighbors" << std::endl
-				<< "Number of Plates" << std::endl;
-		}
-	}
+    if (ID == 0) {
+        //input gets called by all mpi ranks anywho
+        if (argc != 6) {
+            std::cout << "Incorrect argument count.Usage:" << std::endl
+                << "Particle Count" << std::endl
+                << "Ticks" << std::endl
+                << "Sphere Level" << std::endl
+                << "Nearest Neighbors" << std::endl
+                << "Number of Plates" << std::endl;
+        }
+    }
 
-	//inputs done for all ranks
-	uint initialParticleCount = strtoumax(argv[1], NULL, 10);
-	uint simulationTicks = strtoumax(argv[2], NULL, 10);
-	uint sphereLevel = strtoumax(argv[3], NULL, 10);
-	uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
-	uint numberOfPlates = strtoumax(argv[5], NULL, 10);
-	double startTime;
+    //inputs done for all ranks
+    uint initialParticleCount = strtoumax(argv[1], NULL, 10);
+    uint simulationTicks = strtoumax(argv[2], NULL, 10);
+    uint sphereLevel = strtoumax(argv[3], NULL, 10);
+    uint nearestNeighbors = strtoumax(argv[4], NULL, 10);
+    uint numberOfPlates = strtoumax(argv[5], NULL, 10);
+    double startTime;
 
-	if (ID == 0) {
-		//error checking on inputs
-		if ((initialParticleCount == UINTMAX_MAX && errno == ERANGE) || initialParticleCount < 0) {
-			std::cout << "Incorrect particle count paramenter." << std::endl;
-			return 1;
-		}
-		if ((simulationTicks == UINTMAX_MAX && errno == ERANGE) || simulationTicks < 0) {
-			std::cout << "Incorrect ticks paramenter." << std::endl;
-			return 1;
-		}
-		if ((sphereLevel == UINTMAX_MAX && errno == ERANGE) || sphereLevel < 0) {
-			std::cout << "Incorrect sphere level paramenter." << std::endl;
-			return 1;
-		}
-		if ((nearestNeighbors == UINTMAX_MAX && errno == ERANGE) || nearestNeighbors < 1) {
-			std::cout << "Incorrect nearest neighbors paramenter." << std::endl;
-			return 1;
-		}
-		if ((numberOfPlates == UINTMAX_MAX && errno == ERANGE) || numberOfPlates < 1) {
-			std::cout << "Incorrect number of plates paramenter." << std::endl;
-			return 1;
-		}
+    if (ID == 0) {
+        //error checking on inputs
+        if ((initialParticleCount == UINTMAX_MAX && errno == ERANGE) || initialParticleCount < 0) {
+            return 1;
+        }
+        if ((simulationTicks == UINTMAX_MAX && errno == ERANGE) || simulationTicks < 0) {
+            std::cout << "Incorrect ticks paramenter." << std::endl;
+            return 1;
+        }
+        if ((sphereLevel == UINTMAX_MAX && errno == ERANGE) || sphereLevel < 0) {
+            std::cout << "Incorrect sphere level paramenter." << std::endl;
+            return 1;
+        }
+        if ((nearestNeighbors == UINTMAX_MAX && errno == ERANGE) || nearestNeighbors < 1) {
+            std::cout << "Incorrect nearest neighbors paramenter." << std::endl;
+            return 1;
+        }
+        if ((numberOfPlates == UINTMAX_MAX && errno == ERANGE) || numberOfPlates < 1) {
+            std::cout << "Incorrect number of plates paramenter." << std::endl;
+            return 1;
+        }
 
-		//start time
-		if (ID == 0) {
-			startTime = MPI_Wtime();
-		}
-	}
+        //start time
+        if (ID == 0) {
+            startTime = MPI_Wtime();
+        }
+    }
 
-	//create the particle datatype
+    //create the particle datatype
 
-	MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-	//////////////////////////
-	/*Setup Rank Information*/
-	//////////////////////////
-	uint currentParticleCount;
-	uint particleOffset = 0; //the offset of the local particles into the global particle count
-	uint particlestoSimulate = 0;
+    //////////////////////////
+    /*Setup Rank Information*/
+    //////////////////////////
+    uint currentParticleCount;
+    uint particleOffset = 0; //the offset of the local particles into the global particle count
+    uint particlestoSimulate = 0;
 
-	ParticlestoSimulate(ID, rankCount, initialParticleCount, particlestoSimulate, particleOffset);
-
-
-	/////////////////////////
-	/*Initialize Simulation*/
-	/////////////////////////
-	//(Plate ID, temp, and any gosh darn variable this simulation would be cool with)
-
-	particles.resize(initialParticleCount);
-
-	//init particles sets the ID to the global Particle ID
-	for (int i = 0; i < particlestoSimulate; ++i) {
-		InitParticle(particles[particleOffset + i], particleOffset + i, initialParticleCount);
-		particles[particleOffset + i].currentRank = ID;
-	}
+    ParticlestoSimulate(ID, rankCount, initialParticleCount, particlestoSimulate, particleOffset);
 
 
-	std::cout << "first sort call" << std::endl;
-	//Sort data (updates the global array)
-	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+    /////////////////////////
+    /*Initialize Simulation*/
+    /////////////////////////
+    //(Plate ID, temp, and any gosh darn variable this simulation would be cool with)
 
-	//ACTUAL plate assigning
+    particles.resize(initialParticleCount);
+
+    //init particles sets the ID to the global Particle ID
+    for (int i = 0; i < particlestoSimulate; ++i) {
+        InitParticle(particles[particleOffset + i], particleOffset + i, initialParticleCount);
+        particles[particleOffset + i].currentRank = ID;
+    }
+
+
+    //Sort data (updates the global array)
+    Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+    //ACTUAL plate assigning
     if(ID == 0) {
         //First, get vectors for every plate
-        std::map<int, std::vector<int>> plateByParticleId; // maps plateID to particles (in term of their location in particles)
+        std::map<int, std::vector<int> > plateByParticleId; // maps plateID to particles (in term of their location in particles)
         for (int p = 0; p < particles.size(); p++) {
             Particle particle = particles[p];
             plateByParticleId[particle.plateID].push_back(p);
@@ -872,6 +876,7 @@ int main(int argc, char **argv)
     // Then, send out the data
     MPI_Bcast(&particles[0], p_size, MPI_BYTE, 0, MPI_COMM_WORLD);
 
+    //Fill the plates map based on the recieved particles
     for(int p = 0; p < particles.size(); p++) {
         Particle particle = particles[p];
         if(plates.find(particle.plateID) == plates.end()) {
@@ -879,13 +884,13 @@ int main(int argc, char **argv)
         }
     }
 
-	////////////////////
-	/*Start Simulation*/
-	////////////////////
+    ////////////////////
+    /*Start Simulation*/
+    ////////////////////
 
-	currentParticleCount = initialParticleCount;
+    currentParticleCount = initialParticleCount;
 
-	for (int i = 0; i < simulationTicks; ++i) {
+    for (int i = 0; i < simulationTicks; ++i) {
         // move particles based on previous position and angle around an axis
 		std::vector<Particle>::iterator itr = particles.begin() + particleOffset;
         float angle;
@@ -897,63 +902,65 @@ int main(int argc, char **argv)
 			++itr;
 		}
 
-		/////////////////////////////////////
-		/*Create the Acceleration Structure*/
-		/////////////////////////////////////
-		std::cout << "second sort call" << std::endl;
-		//sort all the particles in the system by morton code
-		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
-		//Now ok to call KNearest for this timestep
+        /////////////////////////////////////
+        /*Create the Acceleration Structure*/
+        /////////////////////////////////////
+        //sort all the particles in the system by morton code
+        Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
+        //Now ok to call KNearest for this timestep
 
-		//TODO: update particles using k nearest neighbors
-		std::vector<Particle> localParticles;
-		std::vector<Particle>::const_iterator const_itr = particles.begin() + particleOffset;
-		while (const_itr != particles.begin() + particleOffset + particlestoSimulate) {
-			localParticles.push_back(*const_itr);
-			++const_itr;
-		}
-		addParticles(localParticles, nearestNeighbors, currentParticleCount);
-		removeParticles(localParticles, particles, currentParticleCount);
-		//collect global particle information from other ranks
-		int* sizes = new int[rankCount];
-		int* offsets = new int[rankCount];
-		uint totalSize = 0;
-		uint localSize = localParticles.size() * sizeof(Particle);
-		if (ID == 0) {
-			MPI_Gather(&localSize, 1, MPI_INT, sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
-				offsets[0] = 0;
-				for (int i = 1; i < rankCount; ++i) {
-					offsets[i] = offsets[i-1] + sizes[i-1];
-				}
-		}
+        //TODO: update particles using k nearest neighbors
+        std::vector<Particle> localParticles;
+        std::vector<Particle>::const_iterator const_itr = particles.begin() + particleOffset;
+        while (const_itr != particles.begin() + particleOffset + particlestoSimulate) {
+            localParticles.push_back(*const_itr);
+            ++const_itr;
+        }
+        addParticles(localParticles, nearestNeighbors, currentParticleCount);
+        removeParticles(localParticles, particles, currentParticleCount);
 
-		/*Get total number of elements*/
-		for (int i = 0; i < rankCount; ++i) {
-			totalSize += sizes[i];
-		}
-		if (totalSize > particles.capacity()) {
-			particles.resize(particles.capacity() * 2);
-		}
-		MPI_Bcast(sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
-		MPI_Bcast(offsets, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
-		MPI_Allgatherv(localParticles.data(), localParticles.size(), MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, MPI_COMM_WORLD);
+        //collect global particle information from other ranks
+        int* sizes = new int[rankCount];
+        int* offsets = new int[rankCount];
+        uint totalSize = 0;
+        uint localSize = localParticles.size() * sizeof(Particle);
+        MPI_Gather(&localSize, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        if (ID == 0) {
+                offsets[0] = 0;
+                for (int i = 1; i < rankCount; ++i) {
+                    offsets[i] = offsets[i-1] + sizes[i-1];
+                }
+        }
 
-		delete[] sizes;
-		delete[] offsets;
-		//update rank information
-		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
-		//update the current rank processor
-		for (int i = 0; i < particlestoSimulate; ++i) {
-			particles[particleOffset + i].currentRank = ID;
-		}
-	}
-	//////////////////
-	/*End Simulation*/
-	//////////////////
+        MPI_Bcast(sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Bcast(offsets, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
 
-	MPI_Barrier(MPI_COMM_WORLD);
+        for (int j = 0; j < rankCount; ++j) {
+            totalSize += sizes[j];
+        }
+        while (totalSize / sizeof(Particle) > particles.capacity()) {
+            particles.resize(particles.capacity() * 2);
+        }
 
+        MPI_Gatherv(localParticles.data(), localSize, MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, 0, MPI_COMM_WORLD);
+				MPI_Bcast(particles.data(), totalSize, MPI_BYTE, 0, MPI_COMM_WORLD);
+
+        delete[] sizes;
+        delete[] offsets;
+        //update rank information
+        ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
+
+        //update the current rank processor
+        for (int j = 0; j < particlestoSimulate; ++j) {
+            particles[particleOffset + j].currentRank = ID;
+        }
+    }
+    //////////////////
+    /*End Simulation*/
+    //////////////////
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
 	//TODO: update mesh heights based on K-N particles
 
@@ -1076,7 +1083,6 @@ int main(int argc, char **argv)
 		facesToWrite += 1;
 	}
 
-
 	// Write the vertices to the obj file
 
 	// Open the file, deleting it if it exists already
@@ -1132,58 +1138,24 @@ int main(int argc, char **argv)
 		std::string x = stream.str();
 		stream.str(std::string());
 
-		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].y;
-		std::string y = stream.str();
-		stream.str(std::string());
+    stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].y;
+    std::string y = stream.str();
+    stream.str(std::string());
 
-		stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].z;
-		std::string z = stream.str();
-		stream.str(std::string());
+    stream << std::fixed << std::setprecision(10) << std::setw(13) << vertices[v].z;
+    std::string z = stream.str();
+    stream.str(std::string());
 
-		std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
+    std::string line = "v " + x + " " + y + " " + z + " 1" + "\n";
 
-		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
+    MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
 
 	}
-	stream.str(std::string());
+    MPI_File_close(&file);
 
-	//Write the faces to the obj file
-	start = ID * facesToWrite + (ID >= extraFaces ? extraFaces : 0);
-	end = start + facesToWrite;
-	int faceBytesPerLine = 1 			// 'v'
-		+ (16 * 3) 						// Numbers
-		+ 3 							// spaces
-		+ 1;							// newline
-	offset = (faceBytesPerLine * start) + (vertexBytesPerLine * vertices.size());
-	MPI_File_seek(file, offset, MPI_SEEK_SET);
-	// Debug call
-	if (end > faces.size()) {
-		std::cout << "Error in getting write range (faces)" << std::endl;
-	}
-	for (int f = start; f < end; f++) {
-		stream << std::setw(16) << (faces[f].v1 + 1);
-
-		std::string v1 = stream.str();
-		stream.str(std::string());
-
-		stream << std::setw(16) << (faces[f].v2 + 1);
-		std::string v2 = stream.str();
-		stream.str(std::string());
-
-		stream << std::setw(16) << (faces[f].v3 + 1);
-		std::string v3 = stream.str();
-		stream.str(std::string());
-
-		std::string line = "f " + v1 + " " + v2 + " " + v3 + "\n";
-
-		MPI_File_write(file, (void*)line.c_str(), line.size(), MPI_CHAR, &status);
-	}
-
-	MPI_File_close(&file);
-
-	//end time
-	if (ID == 0) {
-		double endTime = MPI_Wtime();
+    //end time
+    if (ID == 0) {
+        double endTime = MPI_Wtime();
 
 		double calcTime = endTime - startTime;
 
