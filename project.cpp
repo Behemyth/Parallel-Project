@@ -107,11 +107,22 @@ public:
 	}
 };
 
+float randomFloat(float a, float b) {
+return ((b-a)*((float)rand()/RAND_MAX))+a;
+}
+
+
 class Axis {
 public:
     float x;
     float y;
     float z;
+
+    Axis() {
+        x = randomFloat(-1, 1);
+        y = randomFloat(-1, 1);
+        z = randomFloat(-1, 1);
+    }
 };
 
 class Plate {
@@ -120,11 +131,15 @@ public:
     float velocity; // change in angle per change in time in radians/tick
     Axis axis;
 
-};
+    Plate() {
+    }
 
-float randomFloat(float a, float b) {
-return ((b-a)*((float)rand()/RAND_MAX))+a;
-}
+    Plate(float plateID_) {
+        plateID = plateID_;
+        axis = Axis();
+        velocity = randomFloat(0, 0.1);
+    }
+};
 
 ///////////////
 /*Global Data*/
@@ -684,7 +699,7 @@ void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &
 	}
 }
 
-void update_position(Particle p, Axis axis, float angle) {
+void update_position(Particle &p, Axis axis, float angle) {
     p.px = p.x;
     p.py = p.y;
     p.pz = p.z;
@@ -842,16 +857,6 @@ int main(int argc, char **argv)
         }
     }
 
-	std::map<int, Plate>::iterator itr = plates.begin();
-    Plate p;
-	for(; itr != plates.end(); itr++) {
-		p = itr->second;
-        p.velocity = randomFloat(0, 0.1); // change if faster or slower rotation of plates is wanted
-        p.axis.x = randomFloat(-1, 1);
-        p.axis.y = randomFloat(-1, 1);
-        p.axis.z = randomFloat(-1, 1);
-    }
-
     MPI_Barrier(MPI_COMM_WORLD);
     // Send out the new particle and plate vectors
     int p_size;
@@ -867,10 +872,11 @@ int main(int argc, char **argv)
     // Then, send out the data
     MPI_Bcast(&particles[0], p_size, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-    //Fill the plates map based on the recieved particles
     for(int p = 0; p < particles.size(); p++) {
         Particle particle = particles[p];
-        plates[particle.plateID].plateID = particle.plateID;
+        if(plates.find(particle.plateID) == plates.end()) {
+            plates[particle.plateID] = Plate(particle.plateID);
+        }
     }
 
 	////////////////////
@@ -881,13 +887,15 @@ int main(int argc, char **argv)
 
 	for (int i = 0; i < simulationTicks; ++i) {
         // move particles based on previous position and angle around an axis
+		std::vector<Particle>::iterator itr = particles.begin() + particleOffset;
         float angle;
         Axis axis;
-        for(Particle p : particles) {
-            angle = plates[p.plateID].velocity;
-            axis = plates[p.plateID].axis;
-            update_position(p, axis, angle);
-        }
+		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
+            angle = plates[itr->plateID].velocity;
+            axis = plates[itr->plateID].axis;
+            update_position(*itr, axis, angle);
+			++itr;
+		}
 
 		/////////////////////////////////////
 		/*Create the Acceleration Structure*/
@@ -899,14 +907,13 @@ int main(int argc, char **argv)
 
 		//TODO: update particles using k nearest neighbors
 		std::vector<Particle> localParticles;
-		std::vector<Particle>::const_iterator itr = particles.begin() + particleOffset;
-		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
-			localParticles.push_back(*itr);
-			++itr;
+		std::vector<Particle>::const_iterator const_itr = particles.begin() + particleOffset;
+		while (const_itr != particles.begin() + particleOffset + particlestoSimulate) {
+			localParticles.push_back(*const_itr);
+			++const_itr;
 		}
 		addParticles(localParticles, nearestNeighbors, currentParticleCount);
 		removeParticles(localParticles, particles, currentParticleCount);
-
 		//collect global particle information from other ranks
 		int* sizes = new int[rankCount];
 		int* offsets = new int[rankCount];
