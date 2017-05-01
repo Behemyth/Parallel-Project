@@ -444,8 +444,8 @@ int findMidpoint(int v1, int v2)
     // getting the unique ID of these two vertices and then
     // checking the cache
     uint64_t smaller = (v1 < v2) ? v1 : v2;
-    uint64_t key = (smaller << 32) + greater;
     uint64_t greater = (v1 < v2) ? v2 : v1;
+    uint64_t key = (smaller << 32) + greater;
 
     if (vertexCache.count(key) > 0)
     {
@@ -766,6 +766,7 @@ int main(int argc, char **argv)
     if (ID == 0) {
         //error checking on inputs
         if ((initialParticleCount == UINTMAX_MAX && errno == ERANGE) || initialParticleCount < 0) {
+            std::cout << "Incorrect particle count paramenter." << std::endl;
             return 1;
         }
         if ((simulationTicks == UINTMAX_MAX && errno == ERANGE) || simulationTicks < 0) {
@@ -950,7 +951,6 @@ int main(int argc, char **argv)
         delete[] offsets;
         //update rank information
         ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
-
         //update the current rank processor
         for (int j = 0; j < particlestoSimulate; ++j) {
             particles[particleOffset + j].currentRank = ID;
@@ -1157,12 +1157,12 @@ int main(int argc, char **argv)
     if (ID == 0) {
         double endTime = MPI_Wtime();
 
-		double calcTime = endTime - startTime;
+        double calcTime = endTime - startTime;
 
-		printf("The simulation took %f seconds.\n", calcTime);
-	}
+        printf("The simulation took %f seconds.\n", calcTime);
+    }
 
-	MPI_Finalize();
+    MPI_Finalize();
 
-	return 0;
+    return 0;
 }
