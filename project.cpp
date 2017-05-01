@@ -250,9 +250,21 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 		disps[i] = disps[i - 1] + counts[i - 1];
 	}
 
+<<<<<<< Updated upstream
 
 	////gather all rank mortons on to rank 0
 	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), counts, disps, MPI_BYTE, 0, MPI_COMM_WORLD);
+=======
+	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
+	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
+	//gather all rank mortons on to rank 0
+	if (rankID == 0) {
+		MPI_Gatherv(MPI_IN_PLACE, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	}
+	else {
+		MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
+	}
+>>>>>>> Stashed changes
 
 	if (rankID == 0) {
 		//merge all sorted arrays with min-heap sort
@@ -569,9 +581,12 @@ int main(int argc, char **argv)
 		particles[particleOffset + i].currentRank = ID;
 	}
 
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 	//Sort data (updates the global array)
 	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
-
 	//ACTUAL plate assigning
 
 
@@ -590,7 +605,10 @@ int main(int argc, char **argv)
 		/////////////////////////////////////
 		/*Create the Acceleration Structure*/
 		/////////////////////////////////////
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 		//sort all the particles in the system by morton code
 		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
@@ -606,18 +624,34 @@ int main(int argc, char **argv)
 		removeParticles(localParticles, particles, currentParticleCount);
 
 		//collect global particle information from other ranks
-		int* recvCount = new int[rankCount];
-		int* disps = new int[rankCount];
-		int perTask = currentParticleCount * sizeof(Particle) / rankCount;
-		for (uint i = 0 < i < rankCount - 1; ++i) {
-			recvCount[i] = perTask;
+ 		int* sizes = new int[rankCount];
+		int* offsets = new int[rankCount];
+		uint totalSize = 0;
+		uint localSize = localParticles.size() * sizeof(Particle);
+		MPI_Gather(&localSize, 1, MPI_INT, sizes, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+		if (ID == 0) {
+				offsets[0] = 0;
+				for (int i = 1; i < rankCount; ++i) {
+					offsets[i] = offsets[i-1] + sizes[i-1];
+				}
 		}
-		disps[0] = 0;
-		for (uint i = 1 < i < rankCount; ++i) {
-			disps[i] = disps[ i - 1] + recvCount[i - 1];
+
+
+		MPI_Bcast(sizes, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+		MPI_Bcast(offsets, rankCount, MPI_INT, 0, MPI_COMM_WORLD);
+
+		for (int i = 0; i < rankCount; ++i) {
+			totalSize += sizes[i];
 		}
-		recvCount[rankCount - 1] = currentParticleCount * sizeof(Particle) % rankCount;
-		MPI_Allgatherv(localParticles.data(), currentParticleCount, MPI_BYTE, particles.data(), recvCount, disps, MPI_BYTE, MPI_COMM_WORLD);
+		if (totalSize / sizeof(Particle) > particles.capacity()) {
+			particles.resize(particles.capacity() * 2);
+		}
+
+
+		MPI_Allgatherv(localParticles.data(), localSize, MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, MPI_COMM_WORLD);
+		std::cout << "Something goes wrong around here rank " << ID << std::endl;
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		delete[] recvCount;
 		delete[] disps;
