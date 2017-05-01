@@ -250,11 +250,6 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 		disps[i] = disps[i - 1] + counts[i - 1];
 	}
 
-<<<<<<< Updated upstream
-
-	////gather all rank mortons on to rank 0
-	MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), counts, disps, MPI_BYTE, 0, MPI_COMM_WORLD);
-=======
 	/*assert(localSize * sizeof(Particle) == byteCount[rankID]);
 	assert(localOffset * sizeof(Particle) == displacementBytes[rankID]);*/
 	//gather all rank mortons on to rank 0
@@ -264,7 +259,6 @@ void Sort(std::vector<Particle>& data, uint size, uint localOffset, uint localSi
 	else {
 		MPI_Gatherv(data.data() + localOffset, outSize, MPI_BYTE, data.data(), byteCount, displacementBytes, MPI_BYTE, 0, MPI_COMM_WORLD);
 	}
->>>>>>> Stashed changes
 
 	if (rankID == 0) {
 		//merge all sorted arrays with min-heap sort
@@ -581,10 +575,6 @@ int main(int argc, char **argv)
 		particles[particleOffset + i].currentRank = ID;
 	}
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 	//Sort data (updates the global array)
 	Sort(particles, initialParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 	//ACTUAL plate assigning
@@ -605,10 +595,6 @@ int main(int argc, char **argv)
 		/////////////////////////////////////
 		/*Create the Acceleration Structure*/
 		/////////////////////////////////////
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 		//sort all the particles in the system by morton code
 		Sort(particles, currentParticleCount, particleOffset, particlestoSimulate, rankCount, ID);
 		//Now ok to call KNearest for this timestep
@@ -649,12 +635,12 @@ int main(int argc, char **argv)
 		}
 
 
-		MPI_Allgatherv(localParticles.data(), localSize, MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, MPI_COMM_WORLD);
+		MPI_Allgather(localParticles.data(), localSize, MPI_BYTE, particles.data(), sizes, offsets, MPI_BYTE, 0, MPI_COMM_WORLD);
 		std::cout << "Something goes wrong around here rank " << ID << std::endl;
 		MPI_Barrier(MPI_COMM_WORLD);
 
-		delete[] recvCount;
-		delete[] disps;
+		delete[] sizes
+		delete[] offsets;
 		//update rank information
 		ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
 
