@@ -31,6 +31,9 @@
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
+#define CHANGE_IN_HEIGHT 0.1
+#define CHANGE_IN_VELOCITY 0.002
+#define STARTING_VELOCITY 0.1
 
 //////////////////////////
 /*Global Data Structures*/
@@ -43,6 +46,9 @@ public:
     float x;
     float y;
     float z;
+    float px;
+	float py;
+	float pz;
 
     float height;   //delta from sea level
 
@@ -106,10 +112,38 @@ public:
 	}
 };
 
+float randomFloat(float a, float b) {
+return ((b-a)*((float)rand()/RAND_MAX))+a;
+}
+
+
+class Axis {
+public:
+    float x;
+    float y;
+    float z;
+
+    Axis() {
+        x = randomFloat(-1, 1);
+        y = randomFloat(-1, 1);
+        z = randomFloat(-1, 1);
+    }
+};
+
 class Plate {
 public:
 	int plateID;
+    float velocity; // change in angle per change in time in radians/tick
+    Axis axis;
 
+    Plate() {
+    }
+
+    Plate(float plateID_) {
+        plateID = plateID_;
+        axis = Axis();
+        velocity = randomFloat(0, STARTING_VELOCITY);
+    }
 };
 
 ///////////////
@@ -474,6 +508,53 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 }
 
 /**
+* Return the indices of the k particles closest to this one, not including the current particle
+*
+* @param k - the amount of neighbors to return
+* @param particles - the global particle array
+* @param size - current size of the particle array
+* @param position - the index of the particle to check
+* @return the indices of the nearest neighbors
+*/
+std::vector<int> getNearestNeighborIndices(uint k, std::vector<Particle>& particles, uint size, uint position) {
+    std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+    std::map<Particle, int> indices;
+    int temp = 0;
+    for (int test = position; temp < k; temp++) {
+
+        //offset by 1
+        if (test - temp - 1 >= 0) {
+            least.push(particles[test - temp - 1]);
+            indices[particles[test-temp-1]] = test-temp-1;
+        }
+
+        //offset by 1
+        if (test + temp + 1 < size) {
+            least.push(particles[test + temp + 1]);
+            indices[particles[test+temp+1]] = test+temp+1;
+        }
+    }
+    while (least.size() > k) {
+        least.pop();
+    }
+
+
+    Particle p;
+    while (least.size() > 0) {
+        p = least.top();
+        least.pop();
+        indices.erase(indices.find(p));
+    }
+
+    std::vector<int> indicesVector;
+    for(std::map<Particle,int>::iterator it = indices.begin(); it != indices.end(); ++it) {
+        indicesVector.push_back(it->second);
+    }
+
+    return indicesVector;
+}
+
+/**
 * Return the k particles closest to an arbitrary point in space
 *
 * @param k - the amount of neighbors to return
@@ -652,10 +733,11 @@ void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) 
  * @param global - global vector of particles to remove from
  * @param numParticles - number of global particles
  */
-void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &global,
-        uint &numParticles) {
+void removeParticles(std::vector<Particle> &local, uint k, const std::vector<Particle> &global,
+        uint &numParticles, std::map<int, Plate> plates) {
     uint numBeforeRemove = numParticles; //store number of particles before removal
     std::vector<Particle>::iterator itr = local.begin();
+	std::vector<int> nearest;
     int diffIds = 0;
     int totalIds = 0;
     while(itr != local.end()) {
@@ -665,14 +747,37 @@ void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &
             }
             ++totalIds;
         }
-        if (diffIds / totalIds > .45) {
-            itr = local.erase(itr);
-            --numParticles;
+        if ((float)diffIds / totalIds > .45) {
+            if(plates[local[itr-local.begin()].plateID].velocity > 0) {
+                plates[local[itr-local.begin()].plateID].velocity -= CHANGE_IN_VELOCITY;
+            } else if(plates[local[itr-local.begin()].plateID].velocity < 0) {
+                plates[local[itr-local.begin()].plateID].velocity = 0;
+            }
+            nearest = getNearestNeighborIndices(k, local, local.size(), (uint)(itr - local.begin()));
+            for(uint i = 0; i < nearest.size(); i++) {
+                if(itr->height <= global[nearest[i]].height) {
+                    local[nearest[i]].height += CHANGE_IN_HEIGHT;
+                } else {
+                    local[nearest[i]].height -= CHANGE_IN_HEIGHT;
+                }
+            }
+            //itr = local.erase(itr);
+            //--numParticles;
         }
         else {
             ++itr;
         }
     }
+}
+
+void update_position(Particle &p, Axis axis, float angle) {
+    p.px = p.x;
+    p.py = p.y;
+    p.pz = p.z;
+
+    p.x = p.px * cos(angle) + (1 - cos(angle))*(axis.x*axis.x*p.px + axis.x*axis.y*p.py + axis.x*axis.z*p.pz) + (axis.y*p.pz - axis.z*p.py)*sin(angle);
+    p.y = p.py * cos(angle) + (1 - cos(angle))*(axis.y*axis.x*p.px + axis.y*axis.y*p.py + axis.y*axis.z*p.pz) + (axis.z*p.px - axis.x*p.pz)*sin(angle);
+    p.z = p.pz * cos(angle) + (1 - cos(angle))*(axis.z*axis.x*p.px + axis.z*axis.y*p.py + axis.z*axis.z*p.pz) + (axis.x*p.py - axis.y*p.px)*sin(angle);
 }
 
 //////////////////////
@@ -689,6 +794,7 @@ int main(int argc, char **argv)
     std::vector<Particle> particles;
     std::map<int, Plate> plates;
 
+    srand(time(NULL));
 
     /********** Initialize MPI **********/
     int rankCount, ID;
@@ -838,7 +944,9 @@ int main(int argc, char **argv)
     //Fill the plates map based on the recieved particles
     for(int p = 0; p < particles.size(); p++) {
         Particle particle = particles[p];
-        plates[particle.plateID].plateID = particle.plateID;
+        if(plates.find(particle.plateID) == plates.end()) {
+            plates[particle.plateID] = Plate(particle.plateID);
+        }
     }
 
     ////////////////////
@@ -848,8 +956,16 @@ int main(int argc, char **argv)
     currentParticleCount = initialParticleCount;
 
     for (int i = 0; i < simulationTicks; ++i) {
-        //TODO: move particles (e.g. Integration. Please do not use Euler. Do like some Verlet integration as a minimum)
-
+        // move particles based on previous position and angle around an axis
+		std::vector<Particle>::iterator itr = particles.begin() + particleOffset;
+        float angle;
+        Axis axis;
+		while (itr != particles.begin() + particleOffset + particlestoSimulate) {
+            angle = plates[itr->plateID].velocity;
+            axis = plates[itr->plateID].axis;
+            update_position(*itr, axis, angle);
+			++itr;
+		}
 
         /////////////////////////////////////
         /*Create the Acceleration Structure*/
@@ -860,13 +976,13 @@ int main(int argc, char **argv)
 
         //TODO: update particles using k nearest neighbors
         std::vector<Particle> localParticles;
-        std::vector<Particle>::const_iterator itr = particles.begin() + particleOffset;
-        while (itr != particles.begin() + particleOffset + particlestoSimulate) {
-            localParticles.push_back(*itr);
-            ++itr;
+        std::vector<Particle>::const_iterator const_itr = particles.begin() + particleOffset;
+        while (const_itr != particles.begin() + particleOffset + particlestoSimulate) {
+            localParticles.push_back(*const_itr);
+            ++const_itr;
         }
         addParticles(localParticles, nearestNeighbors, currentParticleCount);
-        removeParticles(localParticles, particles, currentParticleCount);
+        removeParticles(localParticles, nearestNeighbors, particles, currentParticleCount, plates);
 
         //collect global particle information from other ranks
         int* sizes = new int[rankCount];
@@ -899,7 +1015,6 @@ int main(int argc, char **argv)
         delete[] offsets;
         //update rank information
         ParticlestoSimulate(ID, rankCount, currentParticleCount, particlestoSimulate, particleOffset);
-
         //update the current rank processor
         for (int j = 0; j < particlestoSimulate; ++j) {
             particles[particleOffset + j].currentRank = ID;
