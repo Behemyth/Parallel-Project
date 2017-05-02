@@ -31,6 +31,9 @@
 #define GOLDEN_RATIO 0.61803398875
 #define GOLDEN_ANGLE_DEGREES 137.5077640500378546463487
 #define GOLDEN_ANGLE_RADS 2.39996322972865332
+#define CHANGE_IN_HEIGHT 0.1
+#define CHANGE_IN_VELOCITY 0.002
+#define STARTING_VELOCITY 0.1
 
 //////////////////////////
 /*Global Data Structures*/
@@ -139,7 +142,7 @@ public:
     Plate(float plateID_) {
         plateID = plateID_;
         axis = Axis();
-        velocity = randomFloat(0, 0.1);
+        velocity = randomFloat(0, STARTING_VELOCITY);
     }
 };
 
@@ -505,6 +508,53 @@ std::vector<Particle> getNearestNeighbors(uint k, std::vector<Particle>& particl
 }
 
 /**
+* Return the indices of the k particles closest to this one, not including the current particle
+*
+* @param k - the amount of neighbors to return
+* @param particles - the global particle array
+* @param size - current size of the particle array
+* @param position - the index of the particle to check
+* @return the indices of the nearest neighbors
+*/
+std::vector<int> getNearestNeighborIndices(uint k, std::vector<Particle>& particles, uint size, uint position) {
+    std::priority_queue<Particle, std::vector<Particle>, std::less<Particle> > least;
+    std::map<Particle, int> indices;
+    int temp = 0;
+    for (int test = position; temp < k; temp++) {
+
+        //offset by 1
+        if (test - temp - 1 >= 0) {
+            least.push(particles[test - temp - 1]);
+            indices[particles[test-temp-1]] = test-temp-1;
+        }
+
+        //offset by 1
+        if (test + temp + 1 < size) {
+            least.push(particles[test + temp + 1]);
+            indices[particles[test+temp+1]] = test+temp+1;
+        }
+    }
+    while (least.size() > k) {
+        least.pop();
+    }
+
+
+    Particle p;
+    while (least.size() > 0) {
+        p = least.top();
+        least.pop();
+        indices.erase(indices.find(p));
+    }
+
+    std::vector<int> indicesVector;
+    for(std::map<Particle,int>::iterator it = indices.begin(); it != indices.end(); ++it) {
+        indicesVector.push_back(it->second);
+    }
+
+    return indicesVector;
+}
+
+/**
 * Return the k particles closest to an arbitrary point in space
 *
 * @param k - the amount of neighbors to return
@@ -683,10 +733,11 @@ void addParticles(std::vector<Particle> &particles, uint k, uint &numParticles) 
  * @param global - global vector of particles to remove from
  * @param numParticles - number of global particles
  */
-void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &global,
-        uint &numParticles) {
+void removeParticles(std::vector<Particle> &local, uint k, const std::vector<Particle> &global,
+        uint &numParticles, std::map<int, Plate> plates) {
     uint numBeforeRemove = numParticles; //store number of particles before removal
     std::vector<Particle>::iterator itr = local.begin();
+	std::vector<int> nearest;
     int diffIds = 0;
     int totalIds = 0;
     while(itr != local.end()) {
@@ -696,9 +747,22 @@ void removeParticles(std::vector<Particle> &local, const std::vector<Particle> &
             }
             ++totalIds;
         }
-        if (diffIds / totalIds > .45) {
-            itr = local.erase(itr);
-            --numParticles;
+        if ((float)diffIds / totalIds > .45) {
+            if(plates[local[itr-local.begin()].plateID].velocity > 0) {
+                plates[local[itr-local.begin()].plateID].velocity -= CHANGE_IN_VELOCITY;
+            } else if(plates[local[itr-local.begin()].plateID].velocity < 0) {
+                plates[local[itr-local.begin()].plateID].velocity = 0;
+            }
+            nearest = getNearestNeighborIndices(k, local, local.size(), (uint)(itr - local.begin()));
+            for(uint i = 0; i < nearest.size(); i++) {
+                if(itr->height <= global[nearest[i]].height) {
+                    local[nearest[i]].height += CHANGE_IN_HEIGHT;
+                } else {
+                    local[nearest[i]].height -= CHANGE_IN_HEIGHT;
+                }
+            }
+            //itr = local.erase(itr);
+            //--numParticles;
         }
         else {
             ++itr;
@@ -918,7 +982,7 @@ int main(int argc, char **argv)
             ++const_itr;
         }
         addParticles(localParticles, nearestNeighbors, currentParticleCount);
-        removeParticles(localParticles, particles, currentParticleCount);
+        removeParticles(localParticles, nearestNeighbors, particles, currentParticleCount, plates);
 
         //collect global particle information from other ranks
         int* sizes = new int[rankCount];
